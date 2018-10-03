@@ -3,6 +3,7 @@ module au_model_library
    use fabm_types, only: type_base_model_factory,type_base_model
 
    use au_prey_predator
+   use fish_weight_length
 ! Add new AU models here
 
    implicit none
@@ -37,6 +38,7 @@ contains
       select case (name)
          case ('lotka_volterra'); allocate(type_au_pp_lotka_volterra::model)
          case ('jacob_monod');    allocate(type_au_pp_jacob_monod::model)
+         case ('fish_weight_length');  allocate(type_fish_weight_length::model)
          case default
             call self%type_base_model_factory%create(name,model)
 !           Add new AU models here
