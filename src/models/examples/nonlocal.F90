@@ -150,7 +150,9 @@ contains
       _LOOP_BEGIN_
          ! First compute relative rate of change of depth-integrated target variable.
          _GET_HORIZONTAL_(self%id_integral,integral)
+!         print *, 'integral=', integral
          _GET_HORIZONTAL_(self%id_sms,integrated_sms)
+!         print*,'integrated_sms=', integrated_sms
          if (integral/=0.0_rk) then
             relative_change = integrated_sms/integral
          else
