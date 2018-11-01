@@ -26,6 +26,8 @@
       type (type_surface_state_variable_id), allocatable   :: id_N(:)
       type (type_surface_state_variable_id), allocatable   :: id_r_mass(:)
       type (type_surface_state_variable_id), allocatable   :: id_i_mass(:)
+      
+      type (type_surface_state_variable_id)   :: id_Z_N
 !
 !     Model parameters
       integer         :: cht_nC
@@ -35,7 +37,7 @@
       real(rk)        :: cht_s,cht_mu_b,cht_mu_0,cht_phi,cht_delta,cht_eps
       real(rk)        :: cht_beta,cht_sigma,cht_x_f,cht_w_b,cht_k_r,cht_theta_m_s
       real(rk)        :: cht_theta_m_e,cht_theta_a_s,cht_theta_a_e,cht_T_ref,cht_K,cht_r
-      real(rk)        :: cht_m,cht_Q10_z
+      real(rk)        :: cht_m,cht_Q10_z,cht_R_day
       
 
 !      real(rk), allocatable       :: wb(:) ! mass at birth
@@ -82,10 +84,10 @@
 !BOC
 !   Register model parameters
 
-   call self%get_parameter(self%cht_nC        ,'number_of_cohorts'      , '[-]'               , 'number of cohorts'                                        , default=10    )
+   call self%get_parameter(self%cht_nC        ,'number_of_cohorts'      , '[-]'               , 'number of cohorts'                                        , default=10       )
    call self%get_parameter(self%cht_ext       ,'extinction_abundcance'  , '[-]'               , 'extinction threshold abundance'                           , default=2E-9_rk  )
-   call self%get_parameter(self%cht_Tmin      ,'min_winter_temp'        , '°C'                , 'minimum winter temperature'                               , default=1.0_rk     )
-   call self%get_parameter(self%cht_Tmax      ,'max_summer_temp'        , '°C'                , 'maximum summer temperature'                               , default=22.0_rk    )
+   call self%get_parameter(self%cht_Tmin      ,'min_winter_temp'        , '°C'                , 'minimum winter temperature'                               , default=1.0_rk   )
+   call self%get_parameter(self%cht_Tmax      ,'max_summer_temp'        , '°C'                , 'maximum summer temperature'                               , default=22.0_rk  )
    call self%get_parameter(self%cht_q_J       ,'max_jv_con'             , '[-]'               , 'juvenile maximum condition'                               , default=0.74_rk  )
    call self%get_parameter(self%cht_q_A       ,'max_ad_con'             , '[-]'               , 'adult maximum condition'                                  , default=1.37_rk  )
    call self%get_parameter(self%cht_lambda_1  ,'length-weight_scalar'   , '(mm g^(-lambda_2)' , 'allometric length-weight scalar'                          , default=48.3_rk  )
@@ -94,7 +96,7 @@
    call self%get_parameter(self%cht_W_opt     ,'att_opt_size'           , 'g'                 , 'size for optimal attack rate on zooplankton'              , default=8.2_rk   )
    call self%get_parameter(self%cht_alpha     ,'att_rate_exp'           , '[-]'               , 'allometric exponent for attack rate on zooplankton'       , default=0.62_rk  )
    call self%get_parameter(self%cht_x_mu      ,'mort_cha_size'          , 'g'                 , 'shape parameter for size-dependent mortality'             , default=0.5_rk   )
-   call self%get_parameter(self%cht_xi_1      ,'handling_time_scalar'   , 'd g^-(1+xi_2)'     , 'allometric scalar for handling time'                      , default=5.0_rk     )
+   call self%get_parameter(self%cht_xi_1      ,'handling_time_scalar'   , 'd g^-(1+xi_2)'     , 'allometric scalar for handling time'                      , default=5.0_rk   )
    call self%get_parameter(self%cht_xi_2      ,'handling_time_exp'      , '[-]'               , 'allometric exponent for handling time'                    , default=-0.8_rk  )
    call self%get_parameter(self%cht_k_e       ,'ass_efficiency'         , '[-]'               , 'assimilation efficiency'                                  , default=0.61_rk  )
    call self%get_parameter(self%cht_rho_1     ,'metab_scalar'           , '(g^(1-rho2) d^-1'  , 'allometric scalar for basic metabolism'                   , default=0.033_rk )
@@ -106,20 +108,23 @@
    call self%get_parameter(self%cht_eps       ,'pred_size_max'          , '[-]'               , 'maximum victim/cannibal size ratio'                       , default=0.2_rk   )
    call self%get_parameter(self%cht_phi       ,'pred_size_opt'          , '[-]'               , 'optimal victim/cannibal size ratio'                       , default=0.05_rk  )
    call self%get_parameter(self%cht_delta     ,'pred_size_min'          , '[-]'               , 'minimum victim/cannibal size ratio'                       , default=0.45_rk  )
-   call self%get_parameter(self%cht_beta      ,'pred_max_att_scalar'    , 'L d^-1 mm^alpha'   , 'cannibalistic voracity (allometric scalar for piscivory)' , default=0.0_rk     )
+   call self%get_parameter(self%cht_beta      ,'pred_max_att_scalar'    , 'L d^-1 mm^alpha'   , 'cannibalistic voracity (allometric scalar for piscivory)' , default=0.0_rk   )
    call self%get_parameter(self%cht_sigma     ,'pred_max_att_exp'       , '[-]'               , 'allometric exponent for cannibalism (piscivory)'          , default=0.6_rk   )
    call self%get_parameter(self%cht_x_f       ,'mat_irr_mass'           , 'g'                 , 'maturation irreversible mass'                             , default=4.6_rk   )
    call self%get_parameter(self%cht_w_b       ,'egg_size'               , 'g'                 , 'egg size'                                                 , default=1.8e-3_rk)
    call self%get_parameter(self%cht_k_r       ,'repro_eff'              , '[-]'               , 'gonad-offspring conversion factor'                        , default=0.5_rk   )
-   call self%get_parameter(self%cht_theta_m_s ,'Q10_metab_scalar'       , '[-]'               , 'allometric scalar of metabolism Q10'                      , default=2.0_rk     )
+   call self%get_parameter(self%cht_theta_m_s ,'Q10_metab_scalar'       , '[-]'               , 'allometric scalar of metabolism Q10'                      , default=2.0_rk   )
    call self%get_parameter(self%cht_theta_m_e ,'Q10_metab_exp'          , '[-]'               , 'allometric exponent of metabolism Q10'                    , default=0.073_rk )
    call self%get_parameter(self%cht_theta_a_s ,'Q10_att_scalar'         , '[-]'               , 'allometric scalar of metabolism Q10'                      , default=2.8_rk   )
    call self%get_parameter(self%cht_theta_a_e ,'Q10_att_exp'            , '[-]'               , 'allometric exponent of metabolism Q10 '                   , default=0.072_rk )
-   call self%get_parameter(self%cht_T_ref     ,'temp_ref_fish'          , '°C'                , 'reference temperature for perch '                         , default=20.0_rk    )
-   call self%get_parameter(self%cht_K         ,'carr_food'              , '[-]'               , 'resource carrying capacity'                               , default=100.0_rk   )
+   call self%get_parameter(self%cht_T_ref     ,'temp_ref_fish'          , '°C'                , 'reference temperature for perch '                         , default=20.0_rk  )
+   call self%get_parameter(self%cht_K         ,'carr_food'              , '[-]'               , 'resource carrying capacity'                               , default=100.0_rk )
    call self%get_parameter(self%cht_r         ,'food_growth'            , '[-]'               , 'resource growth rate'                                     , default=0.1_rk   )
    call self%get_parameter(self%cht_m         ,'food_ind_weight'        , 'g'                 , 'weight of resource individual'                            , default=3e-5_rk  )
    call self%get_parameter(self%cht_Q10_z     ,'Q10_food'               , '[-]'               , 'Q10 value of zooplankton population growth'               , default=1.799_rk )
+   
+   call self%get_parameter(self%cht_R_day     ,'repro_day'              , '[-]'               , 'reproduction day of year for fish '                       , default=152.0_rk )
+
 
 !  allocate state variable pointers, according to user-defined number of cohorts(cht_nC)
    allocate(self%id_N(self%cht_nC))
@@ -137,6 +142,7 @@
 !write(*,*) self%wb
 !stop
 
+   ! setup fish cohorts 
    do n=1,self%cht_nC
       write (name,"(A1,I02.2)") "N", n-1
       write (longname, "(A9, I02.2)") "abundance", n-1
@@ -148,22 +154,25 @@
       write (longname, "(A17, I02.2)") "irreversible mass", n-1
       call self%register_state_variable(self%id_i_mass(n),name,'kg/individual',longname,initial_value=0._rk,minimum=0.0_rk)
    end do
-
+   
+! seup zooplankton
+call self%register_state_variable(self%id_Z_N,'prey','ind./L^-1','food concentration',initial_value=self%cht_K,minimum=0.0_rk)
+   
 #if 0
-   call self%get_parameter(self%b,'b','d-1','growth rate of prey',   default=1.00_rk,scale_factor=d_per_s)
-   call self%get_parameter(self%p,'p','d-1','impact of predation',   default=0.05_rk,scale_factor=d_per_s)
-   call self%get_parameter(self%r,'r','d-1','growth efficiency rate',default=0.02_rk,scale_factor=d_per_s)
-   call self%get_parameter(self%d,'d','d-1','death rate',            default=0.50_rk,scale_factor=d_per_s)
-
+!   call self%get_parameter(self%b,'b','d-1','growth rate of prey',   default=1.00_rk,scale_factor=d_per_s)
+!   call self%get_parameter(self%p,'p','d-1','impact of predation',   default=0.05_rk,scale_factor=d_per_s)
+!   call self%get_parameter(self%r,'r','d-1','growth efficiency rate',default=0.02_rk,scale_factor=d_per_s)
+!   call self%get_parameter(self%d,'d','d-1','death rate',            default=0.50_rk,scale_factor=d_per_s)
+!
 !  Register state variables
-   call self%register_state_variable(self%id_prey,'prey','mmol/m**3','nutrient',     &
-                                    0._rk,minimum=0.0_rk,no_river_dilution=.FALSE.)
-   call self%register_state_variable(self%id_predator,'predator','mmol/m**3','phytoplankton',     &
-                                    0._rk,minimum=0.0_rk,no_river_dilution=.FALSE.)
-
-!  Register conserved quantities
-   call self%add_to_aggregate_variable(standard_variables%total_carbon,self%id_prey)
-   call self%add_to_aggregate_variable(standard_variables%total_carbon,self%id_predator)
+!   call self%register_state_variable(self%id_prey,'prey','mmol/m**3','nutrient',     &
+!                                    0._rk,minimum=0.0_rk,no_river_dilution=.FALSE.)
+!   call self%register_state_variable(self%id_predator,'predator','mmol/m**3','phytoplankton',     &
+!                                    0._rk,minimum=0.0_rk,no_river_dilution=.FALSE.)
+!
+!!  Register conserved quantities
+!   call self%add_to_aggregate_variable(standard_variables%total_carbon,self%id_prey)
+!   call self%add_to_aggregate_variable(standard_variables%total_carbon,self%id_predator)
 #endif
 
    return
@@ -183,8 +192,8 @@
 !
 ! !LOCAL VARIABLES:
 !  state variables
-   real(rk)   :: N,r_mass,i_mass
-   real(rk)   :: d_N, d_rmass, d_imass
+   real(rk)   :: N,r_mass,i_mass,Z_N
+   real(rk)   :: d_N, d_rmass, d_imass, d_ZN
    real(rk)    :: g, f,tot_r
    integer    :: i
 !EOP
@@ -193,20 +202,58 @@
 ! Enter spatial loops (if any)
    _HORIZONTAL_LOOP_BEGIN_
 
-   do i=1,self%cht_nC
+! get zooplankton (food) concentration:
+_GET_HORIZONTAL_(self%id_Z_N,Z_N)
+
+! now do fish:
+if (Day >= self%cht_R_day .AND. Day <= self%cht_R_day + 1.0_rk) then  ! determine if reproduction is due
+    !-----------------------------------------------------------------------
+    !  fish reproduction
+    !-----------------------------------------------------------------------
+    do i=1,self%cht_nC
       _GET_HORIZONTAL_(self%id_N(i),N)
       _GET_HORIZONTAL_(self%id_r_mass(i),r_mass)
       _GET_HORIZONTAL_(self%id_i_mass(i),i_mass)
       ! do something more useful here
-      g = 0.0001_rk*self%cht_r
-      f = 0.00001_rk*self%cht_mu_b
+
+      !      write(*,*) N,r_mass,i_mass
+      _SET_SURFACE_ODE_(self%id_N,g)
+      _SET_SURFACE_ODE_(self%id_r_mass,tot_r)
+      _SET_SURFACE_ODE_(self%id_i_mass,f)
+   end do
+else                                                                  ! reproduction is not due
+    !-----------------------------------------------------------------------
+    !  fish dynamics
+    !-----------------------------------------------------------------------
+    
+    !      do yearly dynamics:
+    do i=1,self%cht_nC
+      _GET_HORIZONTAL_(self%id_N(i),N)
+      _GET_HORIZONTAL_(self%id_r_mass(i),r_mass)
+      _GET_HORIZONTAL_(self%id_i_mass(i),i_mass)
+      ! do something more useful here
       
-      tot_r = g*r_mass - f*r_mass
 !      write(*,*) N,r_mass,i_mass
       _SET_SURFACE_ODE_(self%id_N,g)
       _SET_SURFACE_ODE_(self%id_r_mass,tot_r)
       _SET_SURFACE_ODE_(self%id_i_mass,f)
    end do
+endif
+   
+!   do i=1,self%cht_nC
+!      _GET_HORIZONTAL_(self%id_N(i),N)
+!      _GET_HORIZONTAL_(self%id_r_mass(i),r_mass)
+!      _GET_HORIZONTAL_(self%id_i_mass(i),i_mass)
+!      ! do something more useful here
+!      g = 0.0001_rk*self%cht_r
+!      f = 0.00001_rk*self%cht_mu_b
+!      
+!      tot_r = g*r_mass - f*r_mass
+!!      write(*,*) N,r_mass,i_mass
+!      _SET_SURFACE_ODE_(self%id_N,g)
+!      _SET_SURFACE_ODE_(self%id_r_mass,tot_r)
+!      _SET_SURFACE_ODE_(self%id_i_mass,f)
+!   end do
 
 
    _HORIZONTAL_LOOP_END_
