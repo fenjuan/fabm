@@ -28,6 +28,10 @@
       type (type_surface_state_variable_id), allocatable   :: id_i_mass(:)
       
       type (type_surface_state_variable_id)   :: id_Z_N
+      
+!     environmental dependencies
+      type (type_dependency_id)                :: id_uTm
+      type (type_global_dependency_id)         :: id_Day
 !
 !     Model parameters
       integer         :: cht_nC
@@ -155,9 +159,13 @@
       call self%register_state_variable(self%id_i_mass(n),name,'kg/individual',longname,initial_value=0._rk,minimum=0.0_rk)
    end do
    
-! seup zooplankton
+! setup zooplankton
 call self%register_state_variable(self%id_Z_N,'prey','ind./L^-1','food concentration',initial_value=self%cht_K,minimum=0.0_rk)
-   
+
+!  register environmental dependencies
+call self%register_dependency(self%id_uTm,    standard_variables%temperature)
+call self%register_dependency(self%id_Day,    standard_variables%number_of_days_since_start_of_the_year)
+
 #if 0
 !   call self%get_parameter(self%b,'b','d-1','growth rate of prey',   default=1.00_rk,scale_factor=d_per_s)
 !   call self%get_parameter(self%p,'p','d-1','impact of predation',   default=0.05_rk,scale_factor=d_per_s)
@@ -196,6 +204,10 @@ call self%register_state_variable(self%id_Z_N,'prey','ind./L^-1','food concentra
    real(rk)   :: d_N, d_rmass, d_imass, d_ZN
    real(rk)    :: g, f,tot_r
    integer    :: i
+   
+   !  Carriers for environment dependencies
+   real(rk)     :: uTm,Day
+
 !EOP
 !-----------------------------------------------------------------------
 !BOC
@@ -205,39 +217,52 @@ call self%register_state_variable(self%id_Z_N,'prey','ind./L^-1','food concentra
 ! get zooplankton (food) concentration:
 _GET_HORIZONTAL_(self%id_Z_N,Z_N)
 
+!  retrieve environmental dependencies
+   _GET_(self%id_uTm,uTm)
+   _GET_GLOBAL_(self%id_Day,Day)
+
 ! now do fish:
 if (Day >= self%cht_R_day .AND. Day <= self%cht_R_day + 1.0_rk) then  ! determine if reproduction is due
     !-----------------------------------------------------------------------
     !  fish reproduction
     !-----------------------------------------------------------------------
     do i=1,self%cht_nC
-      _GET_HORIZONTAL_(self%id_N(i),N)
-      _GET_HORIZONTAL_(self%id_r_mass(i),r_mass)
-      _GET_HORIZONTAL_(self%id_i_mass(i),i_mass)
-      ! do something more useful here
-
-      !      write(*,*) N,r_mass,i_mass
-      _SET_SURFACE_ODE_(self%id_N,g)
-      _SET_SURFACE_ODE_(self%id_r_mass,tot_r)
-      _SET_SURFACE_ODE_(self%id_i_mass,f)
-   end do
+        _GET_HORIZONTAL_(self%id_N(i),N)
+        _GET_HORIZONTAL_(self%id_r_mass(i),r_mass)
+        _GET_HORIZONTAL_(self%id_i_mass(i),i_mass)
+        if ! cohort is mature .AND. not starving
+            ! calculate the reproduction here
+        else
+            ! no reproduction from this cohort; no change in cohort reversible mass
+        endif
+        
+        ! Update differentials
+        _SET_SURFACE_ODE_(self%id_N,g)            ! QUESTION: sets all cohort differentials or only one?
+        _SET_SURFACE_ODE_(self%id_r_mass,tot_r)
+        _SET_SURFACE_ODE_(self%id_i_mass,f)
+    end do
 else                                                                  ! reproduction is not due
     !-----------------------------------------------------------------------
     !  fish dynamics
     !-----------------------------------------------------------------------
-    
-    !      do yearly dynamics:
     do i=1,self%cht_nC
-      _GET_HORIZONTAL_(self%id_N(i),N)
-      _GET_HORIZONTAL_(self%id_r_mass(i),r_mass)
-      _GET_HORIZONTAL_(self%id_i_mass(i),i_mass)
-      ! do something more useful here
-      
-!      write(*,*) N,r_mass,i_mass
-      _SET_SURFACE_ODE_(self%id_N,g)
-      _SET_SURFACE_ODE_(self%id_r_mass,tot_r)
-      _SET_SURFACE_ODE_(self%id_i_mass,f)
-   end do
+        _GET_HORIZONTAL_(self%id_N(i),N)
+        _GET_HORIZONTAL_(self%id_r_mass(i),r_mass)
+        _GET_HORIZONTAL_(self%id_i_mass(i),i_mass)
+        if ! cohort is not empty
+            ! calculate size-specific rates and parameters
+            ! calculate temperature correction rates
+            ! do predation on other fish
+            ! calculate total encounter rates and final growth rates
+            ! calculate final mortality rates
+            ! allocate growth to reversible/irreversible mass
+        else
+            ! rate of change is zero
+        endif
+        _SET_SURFACE_ODE_(self%id_N,g)
+        _SET_SURFACE_ODE_(self%id_r_mass,tot_r)
+        _SET_SURFACE_ODE_(self%id_i_mass,f)
+    end do
 endif
    
 !   do i=1,self%cht_nC
