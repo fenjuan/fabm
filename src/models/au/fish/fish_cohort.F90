@@ -43,7 +43,6 @@
       real(rk)        :: cht_theta_m_e,cht_theta_a_s,cht_theta_a_e,cht_T_ref,cht_K,cht_r
       real(rk)        :: cht_m,cht_Q10_z,cht_R_day
       
-
 !      real(rk), allocatable       :: wb(:) ! mass at birth
 !                        
       contains           
@@ -52,7 +51,11 @@
       procedure :: initialize
       procedure :: do_surface
 
-   end type type_fish_cohort
+      end type type_fish_cohort
+
+!     private data members(API0.92)
+real(rk),parameter :: secs_pr_day=86400.0_rk
+real(rk),parameter :: L_pr_m3 = 1000.0_rk
 
 !EOP
 !-----------------------------------------------------------------------
@@ -86,47 +89,47 @@
 !BOC
 !   Register model parameters
 
-   call self%get_parameter(self%cht_nC        ,'number_of_cohorts'      , '[-]'               , 'number of cohorts'                                        , default=10       )
-   call self%get_parameter(self%cht_ext       ,'extinction_abundcance'  , '[-]'               , 'extinction threshold abundance'                           , default=2E-9_rk  )
-   call self%get_parameter(self%cht_Tmin      ,'min_winter_temp'        , '°C'                , 'minimum winter temperature'                               , default=1.0_rk   )
-   call self%get_parameter(self%cht_Tmax      ,'max_summer_temp'        , '°C'                , 'maximum summer temperature'                               , default=22.0_rk  )
-   call self%get_parameter(self%cht_q_J       ,'max_jv_con'             , '[-]'               , 'juvenile maximum condition'                               , default=0.74_rk  )
-   call self%get_parameter(self%cht_q_A       ,'max_ad_con'             , '[-]'               , 'adult maximum condition'                                  , default=1.37_rk  )
-   call self%get_parameter(self%cht_lambda_1  ,'length-weight_scalar'   , '(mm g^(-lambda_2)' , 'allometric length-weight scalar'                          , default=48.3_rk  )
-   call self%get_parameter(self%cht_lambda_2  ,'length-weight_exponent' , '[-'                , 'allometric length-weight exponent'                        , default=0.317_rk )
-   call self%get_parameter(self%cht_A_mx      ,'max_attack_rate'        , 'L d^-1'            , 'max attack rate'                                          , default=3E4_rk   )
-   call self%get_parameter(self%cht_W_opt     ,'att_opt_size'           , 'g'                 , 'size for optimal attack rate on zooplankton'              , default=8.2_rk   )
-   call self%get_parameter(self%cht_alpha     ,'att_rate_exp'           , '[-]'               , 'allometric exponent for attack rate on zooplankton'       , default=0.62_rk  )
-   call self%get_parameter(self%cht_x_mu      ,'mort_cha_size'          , 'g'                 , 'shape parameter for size-dependent mortality'             , default=0.5_rk   )
-   call self%get_parameter(self%cht_xi_1      ,'handling_time_scalar'   , 'd g^-(1+xi_2)'     , 'allometric scalar for handling time'                      , default=5.0_rk   )
-   call self%get_parameter(self%cht_xi_2      ,'handling_time_exp'      , '[-]'               , 'allometric exponent for handling time'                    , default=-0.8_rk  )
-   call self%get_parameter(self%cht_k_e       ,'ass_efficiency'         , '[-]'               , 'assimilation efficiency'                                  , default=0.61_rk  )
-   call self%get_parameter(self%cht_rho_1     ,'metab_scalar'           , '(g^(1-rho2) d^-1'  , 'allometric scalar for basic metabolism'                   , default=0.033_rk )
-   call self%get_parameter(self%cht_rho_2     ,'metab_exp'              , '[-]'               , 'allometric exponent for basic metabolism'                 , default=0.77_rk  )
-   call self%get_parameter(self%cht_q_s       ,'starv_con'              , '[-]'               , 'starvation condition'                                     , default=0.2_rk   )
-   call self%get_parameter(self%cht_s         ,'starv_coeff'            , 'd^-1'              , 'starvation coefficient'                                   , default=0.2_rk   )
-   call self%get_parameter(self%cht_mu_b      ,'background_mort'        , 'd^-1'              , 'background mortality'                                     , default=0.0_rk   )
-   call self%get_parameter(self%cht_mu_0      ,'mort_scalar_size'       , 'd^-1'              , 'scaling constant for size-dependent mortality'            , default=0.034_rk )
-   call self%get_parameter(self%cht_eps       ,'pred_size_max'          , '[-]'               , 'maximum victim/cannibal size ratio'                       , default=0.2_rk   )
-   call self%get_parameter(self%cht_phi       ,'pred_size_opt'          , '[-]'               , 'optimal victim/cannibal size ratio'                       , default=0.05_rk  )
-   call self%get_parameter(self%cht_delta     ,'pred_size_min'          , '[-]'               , 'minimum victim/cannibal size ratio'                       , default=0.45_rk  )
-   call self%get_parameter(self%cht_beta      ,'pred_max_att_scalar'    , 'L d^-1 mm^alpha'   , 'cannibalistic voracity (allometric scalar for piscivory)' , default=0.0_rk   )
-   call self%get_parameter(self%cht_sigma     ,'pred_max_att_exp'       , '[-]'               , 'allometric exponent for cannibalism (piscivory)'          , default=0.6_rk   )
-   call self%get_parameter(self%cht_x_f       ,'mat_irr_mass'           , 'g'                 , 'maturation irreversible mass'                             , default=4.6_rk   )
-   call self%get_parameter(self%cht_w_b       ,'egg_size'               , 'g'                 , 'egg size'                                                 , default=1.8e-3_rk)
-   call self%get_parameter(self%cht_k_r       ,'repro_eff'              , '[-]'               , 'gonad-offspring conversion factor'                        , default=0.5_rk   )
-   call self%get_parameter(self%cht_theta_m_s ,'Q10_metab_scalar'       , '[-]'               , 'allometric scalar of metabolism Q10'                      , default=2.0_rk   )
-   call self%get_parameter(self%cht_theta_m_e ,'Q10_metab_exp'          , '[-]'               , 'allometric exponent of metabolism Q10'                    , default=0.073_rk )
-   call self%get_parameter(self%cht_theta_a_s ,'Q10_att_scalar'         , '[-]'               , 'allometric scalar of metabolism Q10'                      , default=2.8_rk   )
-   call self%get_parameter(self%cht_theta_a_e ,'Q10_att_exp'            , '[-]'               , 'allometric exponent of metabolism Q10 '                   , default=0.072_rk )
-   call self%get_parameter(self%cht_T_ref     ,'temp_ref_fish'          , '°C'                , 'reference temperature for perch '                         , default=20.0_rk  )
-   call self%get_parameter(self%cht_K         ,'carr_food'              , '[-]'               , 'resource carrying capacity'                               , default=100.0_rk )
-   call self%get_parameter(self%cht_r         ,'food_growth'            , '[-]'               , 'resource growth rate'                                     , default=0.1_rk   )
-   call self%get_parameter(self%cht_m         ,'food_ind_weight'        , 'g'                 , 'weight of resource individual'                            , default=3e-5_rk  )
-   call self%get_parameter(self%cht_Q10_z     ,'Q10_food'               , '[-]'               , 'Q10 value of zooplankton population growth'               , default=1.799_rk )
+   call self%get_parameter(self%cht_nC        ,'number_of_cohorts'      , '[-]'               , 'number of cohorts'                                        , default=10                                                 )
+   call self%get_parameter(self%cht_ext       ,'extinction_abundance'   , '[L^-1]'            , 'extinction threshold abundance'                           , default=1E-15_rk                                           )
+   call self%get_parameter(self%cht_Tmin      ,'min_winter_temp'        , '°C'                , 'minimum winter temperature'                               , default=1.0_rk                                             )
+   call self%get_parameter(self%cht_Tmax      ,'max_summer_temp'        , '°C'                , 'maximum summer temperature'                               , default=22.0_rk                                            )
+   call self%get_parameter(self%cht_q_J       ,'max_jv_con'             , '[-]'               , 'juvenile maximum condition'                               , default=0.74_rk                                            )
+   call self%get_parameter(self%cht_q_A       ,'max_ad_con'             , '[-]'               , 'adult maximum condition'                                  , default=1.37_rk                                            )
+   call self%get_parameter(self%cht_lambda_1  ,'length-weight_scalar'   , '(mm g^(-lambda_2)' , 'allometric length-weight scalar'                          , default=48.3_rk                                            )
+   call self%get_parameter(self%cht_lambda_2  ,'length-weight_exponent' , '[-]'               , 'allometric length-weight exponent'                        , default=0.317_rk                                           )
+   call self%get_parameter(self%cht_A_mx      ,'max_attack_rate'        , 'L d^-1'            , 'max attack rate'                                          , default=3E4_rk      ,    scale_factor=1.0_rk/secs_pr_day   )
+   call self%get_parameter(self%cht_W_opt     ,'att_opt_size'           , 'g'                 , 'size for optimal attack rate on zooplankton'              , default=8.2_rk                                             )
+   call self%get_parameter(self%cht_alpha     ,'att_rate_exp'           , '[-]'               , 'allometric exponent for attack rate on zooplankton'       , default=0.62_rk                                            )
+   call self%get_parameter(self%cht_x_mu      ,'mort_cha_size'          , 'g'                 , 'shape parameter for size-dependent mortality'             , default=1.0_rk                                             )
+   call self%get_parameter(self%cht_xi_1      ,'handling_time_scalar'   , 'd g^-(1+xi_2)'     , 'allometric scalar for handling time'                      , default=5.0_rk      ,    scale_factor=secs_pr_day          )
+   call self%get_parameter(self%cht_xi_2      ,'handling_time_exp'      , '[-]'               , 'allometric exponent for handling time'                    , default=-0.8_rk                                            )
+   call self%get_parameter(self%cht_k_e       ,'ass_efficiency'         , '[-]'               , 'assimilation efficiency'                                  , default=0.61_rk                                            )
+   call self%get_parameter(self%cht_rho_1     ,'metab_scalar'           , '(g^(1-rho2) d^-1'  , 'allometric scalar for basic metabolism'                   , default=0.033_rk    ,    scale_factor=1.0_rk/secs_pr_day   )
+   call self%get_parameter(self%cht_rho_2     ,'metab_exp'              , '[-]'               , 'allometric exponent for basic metabolism'                 , default=0.77_rk                                            )
+   call self%get_parameter(self%cht_q_s       ,'starv_con'              , '[-]'               , 'starvation condition'                                     , default=0.2_rk                                             )
+   call self%get_parameter(self%cht_s         ,'starv_coeff'            , 'd^-1'              , 'starvation coefficient'                                   , default=0.2_rk      ,    scale_factor=1.0_rk/secs_pr_day   )
+   call self%get_parameter(self%cht_mu_b      ,'background_mort'        , 'd^-1'              , 'background mortality'                                     , default=0.0025_rk   ,    scale_factor=1.0_rk/secs_pr_day   )
+   call self%get_parameter(self%cht_mu_0      ,'mort_scalar_size'       , 'd^-1'              , 'scaling constant for size-dependent mortality'            , default=0.034_rk    ,    scale_factor=1.0_rk/secs_pr_day   )
+   call self%get_parameter(self%cht_eps       ,'pred_size_max'          , '[-]'               , 'maximum victim/cannibal size ratio'                       , default=0.45_rk                                            )
+   call self%get_parameter(self%cht_phi       ,'pred_size_opt'          , '[-]'               , 'optimal victim/cannibal size ratio'                       , default=0.2_rk                                             )
+   call self%get_parameter(self%cht_delta     ,'pred_size_min'          , '[-]'               , 'minimum victim/cannibal size ratio'                       , default=0.05_rk                                            )
+   call self%get_parameter(self%cht_beta      ,'pred_max_att_scalar'    , 'L d^-1 mm^sigma'   , 'cannibalistic voracity (allometric scalar for piscivory)' , default=0.0_rk      ,    scale_factor=1.0_rk/secs_pr_day   )
+   call self%get_parameter(self%cht_sigma     ,'pred_max_att_exp'       , '[-]'               , 'allometric exponent for cannibalism (piscivory)'          , default=0.6_rk                                             )
+   call self%get_parameter(self%cht_x_f       ,'mat_irr_mass'           , 'g'                 , 'maturation irreversible mass'                             , default=4.6_rk                                             )
+   call self%get_parameter(self%cht_w_b       ,'egg_size'               , 'g'                 , 'egg size'                                                 , default=1.8e-3_rk                                          )
+   call self%get_parameter(self%cht_k_r       ,'repro_eff'              , '[-]'               , 'gonad-offspring conversion factor'                        , default=0.5_rk                                             )
+   call self%get_parameter(self%cht_theta_m_s ,'Q10_metab_scalar'       , '[-]'               , 'allometric scalar of metabolism Q10'                      , default=2.0_rk                                             )
+   call self%get_parameter(self%cht_theta_m_e ,'Q10_metab_exp'          , '[-]'               , 'allometric exponent of metabolism Q10'                    , default=0.073_rk                                           )
+   call self%get_parameter(self%cht_theta_a_s ,'Q10_att_scalar'         , '[-]'               , 'allometric scalar of metabolism Q10'                      , default=2.8_rk                                             )
+   call self%get_parameter(self%cht_theta_a_e ,'Q10_att_exp'            , '[-]'               , 'allometric exponent of metabolism Q10 '                   , default=0.072_rk                                           )
+   call self%get_parameter(self%cht_T_ref     ,'temp_ref_fish'          , '°C'                , 'reference temperature for perch '                         , default=20.0_rk                                            )
+   call self%get_parameter(self%cht_K         ,'carr_food'              , '[L^-1]'            , 'resource carrying capacity'                               , default=100.0_rk                                           )
+   call self%get_parameter(self%cht_r         ,'food_growth'            , '[d^-1]'            , 'resource growth rate'                                     , default=0.1_rk      ,    scale_factor=1.0_rk/secs_pr_day   )
+   call self%get_parameter(self%cht_m         ,'food_ind_weight'        , 'g'                 , 'weight of resource individual'                            , default=3e-5_rk                                            )
+   call self%get_parameter(self%cht_Q10_z     ,'Q10_food'               , '[-]'               , 'Q10 value of zooplankton population growth'               , default=1.799_rk                                           )
    
-   call self%get_parameter(self%cht_R_day     ,'repro_day'              , '[-]'               , 'reproduction day of year for fish '                       , default=152.0_rk )
-   call self%get_parameter(self%cht_nc_init   ,'initial_cohorts'        , '[-]'               , 'number of cohorts present at simulation start '           , default=1        )
+   call self%get_parameter(self%cht_R_day     ,'repro_day'              , '[d]'               , 'reproduction day of year for fish '                       , default=152.0_rk                                           )
+   call self%get_parameter(self%cht_nc_init   ,'initial_cohorts'        , '[-]'               , 'number of cohorts present at simulation start '           , default=1                                                  )
 
 
 !  allocate state variable pointers, according to user-defined number of cohorts(cht_nC)
@@ -150,10 +153,10 @@
       call self%register_state_variable(self%id_N(n),name, '-', longname,initial_value= 0._rk, minimum=0.0_rk)
       write (name,"(A6,I02.2)") "r_mass", n-1
       write (longname, "(A15, I02.2)") "reversible mass", n-1
-      call self%register_state_variable(self%id_r_mass(n),name,'kg/individual',longname,initial_value= self%cht_q_J*self%cht_w_b/(1+self%cht_q_J),minimum=0.0_rk)
+      call self%register_state_variable(self%id_r_mass(n),name,'g/individual',longname,initial_value= self%cht_q_J*self%cht_w_b/(1+self%cht_q_J),minimum=0.0_rk)
       write (name,"(A6,I02.2)") "i_mass", n-1
       write (longname, "(A17, I02.2)") "irreversible mass", n-1
-      call self%register_state_variable(self%id_i_mass(n),name,'kg/individual',longname,initial_value=self%cht_w_b/(1+self%cht_q_J),minimum=0.0_rk)
+      call self%register_state_variable(self%id_i_mass(n),name,'g/individual',longname,initial_value=self%cht_w_b/(1+self%cht_q_J),minimum=0.0_rk)
    end do
    
 ! setup zooplankton
@@ -232,6 +235,12 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
         _GET_HORIZONTAL_(self%id_r_mass,r_mass)                                                                     ! get cohort reversible mass (reserves+gonads)
         _GET_HORIZONTAL_(self%id_i_mass,i_mass)                                                                     ! get cohort irreversible mass (structural tissues, organs)
     
+! print *, 'Z_N=', Z_N
+! print *, 'N=', N
+! print *, 'r_mass=', r_mass
+! print *, 'i_mass', i_mass
+! 
+
         !  retrieve environmental dependencies:
         _GET_(self%id_uTm,uTm)                                                                                      ! get temperature. eventually, this shoud be replaced
         _GET_GLOBAL_(self%id_Day,Day)                                                                               ! get current julian day
@@ -264,20 +273,29 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
         !===========================================================================================================
         ! 2.1 calculate size-specific rates and parameters
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-        st_mass = i_mass*(1+self%cht_q_J)                                                                           ! calculate fish standard mass
+        st_mass = i_mass*(1.0_rk+self%cht_q_J)                                                                           ! calculate fish standard mass
         lengths = self%cht_lambda_1*st_mass**self%cht_lambda_2                                                      ! calculate fish lengths
-        H = self%cht_xi_1*st_mass**self%cht_xi_2                                                                    ! calculate size-specific handling times (digestion)
-        A_z = self%cht_A_mx*((st_mass/self%cht_W_opt)*exp(1-st_mass/self%cht_W_opt))**self%cht_alpha                ! calculate size-specific attack rate on zooplankton
+        where (N>0.0_rk)
+            H = self%cht_xi_1*st_mass**self%cht_xi_2                                                                    ! calculate size-specific handling times (digestion)
+        elsewhere
+            H = 0.0_rk
+        endwhere
+        A_z = self%cht_A_mx*((st_mass/self%cht_W_opt)*exp(1.0_rk-st_mass/self%cht_W_opt))**self%cht_alpha                ! calculate size-specific attack rate on zooplankton
         mu_size = self%cht_mu_0*exp(-i_mass/self%cht_x_mu)                                                          ! calculate size-spcific mortality
         E_m = self%cht_rho_1*(i_mass+r_mass)**self%cht_rho_2                                                        ! calculate size-specific respiration
         eta_z = A_z*Z_N*self%cht_m                                                                                  ! calculate encounter rate with zooplankton
         !===========================================================================================================
         ! 2.2 calculate temperature correction factors
-        !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::                
-        Q10_f_m = self%cht_theta_m_s*(r_mass+i_mass)**self%cht_theta_m_e                                            ! calculate size-specific Q10 for fish metabolism
-        Q10_f_a = self%cht_theta_a_s*(r_mass+i_mass)**self%cht_theta_a_e                                            ! calculate size-specific Q10 for fish feeding
-        rt_f_m = Q10_f_m**((uTm-self%cht_T_ref)/10)                                                                 ! calculate temperature correction factor for metabolism
-        rt_f_a = Q10_f_a**((uTm-self%cht_T_ref)/10)                                                                 ! calculate temperature correction factor for feeding     
+        !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+        where (N>0.0_rk) ! only do calculations on the cohorts that are non-empty
+            Q10_f_m = self%cht_theta_m_s*(r_mass+i_mass)**self%cht_theta_m_e                                        ! calculate size-specific Q10 for fish metabolism
+            Q10_f_a = self%cht_theta_a_s*(r_mass+i_mass)**self%cht_theta_a_e                                        ! calculate size-specific Q10 for fish feeding
+            rt_f_m = Q10_f_m**((uTm-self%cht_T_ref)/10.0_rk)                                                             ! calculate temperature correction factor for metabolism
+            rt_f_a = Q10_f_a**((uTm-self%cht_T_ref)/10.0_rk)                                                             ! calculate temperature correction factor for feeding
+        elsewhere ! empty cohorts
+            rt_f_m = 0.0_rk                                                                                         ! avoid getting inf in empty cohorts
+            rt_f_a = 0.0_rk                                                                                         ! avoid getting inf in empty cohorts
+        endwhere
         !===========================================================================================================
         ! 2.3 calculate cannibalistic (eventually all piscivorous) interactions
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -294,7 +312,7 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
         ! 2.4 scale rates to temperature
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::                
         H = H*(1/rt_f_a)                                                                                            ! temperature correct handling times
-        where (isnan(H)) H = 0                                                                                      ! get rid of NANs
+        where (isnan(H)) H = 0.0_rk                                                                                      ! get rid of NANs
         A_z = A_z*rt_f_a                                                                                            ! temperature correct attack rate on zooplankton
         E_m = E_m*rt_f_m                                                                                            ! temperature correct basal metabolism
         A_c = A_c*spread(rt_f_a, DIM=1,  NCOPIES=nC_fin)                                                            ! temperature correct piscivorous attack rates according to attackers temperature correction factor
@@ -303,14 +321,14 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         if (Day >= self%cht_R_day .AND. Day <= self%cht_R_day + 1.0_rk .AND. ix_repro==0) then ! first time step of reproduction event
             where (i_mass >= self%cht_x_f .AND. r_mass > self%cht_q_J*i_mass) ! where cohorts are mature and non-starving
-                g_mass = (r_mass-self%cht_q_J*i_mass)                                                               ! calculate total loss of r_mass due to reproduction (gonad mass), which is equivalent to the daily loss rate when reproduction lasts one day
+                g_mass = (r_mass-self%cht_q_J*i_mass)/secs_pr_day                                                               ! calculate total loss of r_mass due to reproduction (gonad mass), which is equivalent to the daily loss rate when reproduction lasts one day
                 A_z = 0.0_rk                                                                                        ! reproducing individuals are not feeding
             elsewhere ! cohort is not ready to reproduce
                 g_mass = 0.0_rk                                                                                     ! no change in r_mass from reproduction for immature or starving cohorts
             endwhere
             where  (spread(i_mass, DIM=1,  NCOPIES=nC_fin) >= self%cht_x_f .AND.    &
                     spread(r_mass, DIM=1,  NCOPIES=nC_fin) >  self%cht_q_J*spread(i_mass, DIM=1,  NCOPIES=nC_fin)) ! where cohorts are mature and non-starving (matrix edition)
-                    A_c = 0.0_rk                                                                        ! reproducing individuals are not feeding
+                    A_c = 0.0_rk                                                                                    ! reproducing individuals are not feeding
             endwhere
             A_z(year+self%cht_nc_init) = 0.0_rk                                                                     ! new cohort only starts feeding after the reproductive event
             A_c(1:nC_fin,year+self%cht_nc_init) = 0.0_rk                                                            ! new cohort only starts feeding after the reproductive event
@@ -325,37 +343,46 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         eta_c = A_c*spread((r_mass+i_mass)*N, DIM=2, NCOPIES=nC_fin)                                                ! calculate encounter rates between piscivores  and fish prey
         eta = eta_z+sum(eta_c,1)                                                                                    ! calculate total encounter rate of piscivores with prey
-        mu_c = sum(A_c*spread(N/(1+H*eta), DIM=1, NCOPIES=nC_fin),2)                                                ! calculate piscivorous mortality on cohorts
-        Ing = eta/(1+H*eta)                                                                                         ! calculate total food intake rate
+        mu_c = sum(A_c*spread(N/(1.0_rk+H*eta), DIM=1, NCOPIES=nC_fin),2)                                           ! calculate piscivorous mortality on cohorts
+        Ing = eta/(1.0_rk+H*eta)                                                                                    ! calculate total food intake rate
         E_a = self%cht_k_e*Ing                                                                                      ! calculate assimilation
         E_g = E_a-E_m                                                                                               ! final growth (or degrowth)
         where (r_mass<self%cht_q_s*i_mass) ! find which cohorts are starving
-            mu_s = (self%cht_s*(self%cht_q_s*i_mass/r_mass-1))                                                      ! calculate starvation mortality
+            mu_s = (self%cht_s*(self%cht_q_s*i_mass/r_mass-1.0_rk))                                                 ! calculate starvation mortality
         elsewhere
             mu_s = 0.0_rk                                                                                           ! otherwise no starvation mortality
         endwhere
-        where (mu_s>10) ! find where starvation mortality is very high
-            mu_s=10                                                                                                 ! too high a starvation mortality might produce problems with integration
+        where (mu_s>10.0_rk) ! find where starvation mortality is very high
+            mu_s=10.0_rk                                                                                            ! too high a starvation mortality might produce problems with integration
         endwhere
         mu = self%cht_mu_b + mu_size + mu_s + mu_c                                                                  ! total mortality
         !===========================================================================================================
         ! 2.7 set ODEs
         !-----------------------------------------------------------------------------------------------------------
         d_N = -mu*N                                                                                                 ! rate of change of cohort abundances (mortality)
-        where (E_g>=0 .AND. i_mass>=self%cht_x_f) ! mature cohorts with positive growth
-            d_imass = (1/((1+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass)*E_g                                       ! calculate part of growth allocated to structure
-            d_rmass = (1-(1/((1+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass))*E_g - g_mass                          ! calculate part of growth allocated to reserves and gonads
-        elsewhere (E_g>=0 .AND. i_mass<self%cht_x_f) ! juvenile cohorts with positive growth
-            d_imass = (1/((1+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass)*E_g                                       ! calculate part of growth allocated to structure
-            d_rmass = (1-(1/((1+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass))*E_g - g_mass                          ! calculate part of growth allocated to reserves
-        elsewhere (E_g<0) ! cohorts with negative growth
+        where (E_g>=0.0_rk .AND. i_mass>=self%cht_x_f .AND. N>0.0_rk) ! mature non-empty cohorts with positive growth
+            d_imass = (1.0_rk/((1.0_rk+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass)*E_g                             ! calculate part of growth allocated to structure
+            d_rmass = (1.0_rk-(1.0_rk/((1.0_rk+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass))*E_g - g_mass           ! calculate part of growth allocated to reserves and gonads
+        elsewhere (E_g>=0.0_rk .AND. i_mass<self%cht_x_f .AND. N>0.0_rk) ! juvenile non-empty cohorts with positive growth
+            d_imass = (1.0_rk/((1.0_rk+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass)*E_g                             ! calculate part of growth allocated to structure
+            d_rmass = (1.0_rk-(1.0_rk/((1.0_rk+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass))*E_g - g_mass           ! calculate part of growth allocated to reserves
+        elsewhere (E_g<0.0_rk) ! cohorts with negative growth
             d_imass = 0.0_rk                                                                                        ! no change in structural tissues when growth is negative
             d_rmass = E_g - g_mass                                                                                  ! loss of reserves due to negative growth
+        elsewhere (N==0.0_rk) ! empty cohorts
+            d_imass = 0.0_rk                                                                                        ! rate of change is zero for empty cohorts
+            d_rmass = 0.0_rk                                                                                        ! rate of change is zero for empty cohorts
         endwhere
-        
+
         _SET_SURFACE_ODE_(self%id_N,d_N)                                                                            ! update zooplankton ODE
         _SET_SURFACE_ODE_(self%id_i_mass,d_imass)                                                                   ! update zooplankton ODE
         _SET_SURFACE_ODE_(self%id_r_mass,d_rmass)                                                                   ! update zooplankton ODE
+        
+!    Print*, 'd_N',d_N
+!    print*, 'd_imass', d_imass
+!    print*, 'd_rmass', d_rmass
+        
+        
         !===========================================================================================================
         ! 2.8 start new cohort
         !-----------------------------------------------------------------------------------------------------------
@@ -364,7 +391,8 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     ! 3. do zooplankton
     !===============================================================================================================
-        d_ZN = self%cht_r*self%cht_Q10_z**((uTm-self%cht_T_ref)/10) * (self%cht_K-Z_N)-Z_N*sum((A_z*N)/(1+H*eta))   ! set zooplankton derivative (K limited growth with growth rate r - minus predation)
+        d_ZN = (self%cht_r*self%cht_Q10_z**((uTm-self%cht_T_ref)/10))*(self%cht_K-Z_N)      &
+            - Z_N*sum((A_z*N)/(1.0_rk+H*eta))                                                                        ! set zooplankton derivative (K limited growth with growth rate r - minus predation)
         
         _SET_SURFACE_ODE_(self%id_Z_N,d_ZN)                                                                         ! update zooplankton ODE
          
