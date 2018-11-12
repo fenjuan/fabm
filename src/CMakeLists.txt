@@ -72,11 +72,11 @@ foreach(institute ${FABM_INSTITUTES})
     # Either a custom institute directory has been specified, or the default institute directory exists.
     if (EXISTS "${FABM_${INSTITUTE_UC}_BASE}")
       # The institute directory exists
-      set(FABM_LIBRARY_USE "${FABM_LIBRARY_USE}
-    use ${institute}_model_library")
-      set(FABM_LIBRARY_ADD "${FABM_LIBRARY_ADD}
-        call self%add(${institute}_model_factory,'${institute}')")
-      set(ACTIVE_INSTITUTES ${ACTIVE_INSTITUTES} ${institute})
+    set(FABM_LIBRARY_USE "${FABM_LIBRARY_USE}
+   use ${institute}_model_library")
+    set(FABM_LIBRARY_ADD "${FABM_LIBRARY_ADD}
+      call self%add(${institute}_model_factory,'${institute}')")
+    set(ACTIVE_INSTITUTES ${ACTIVE_INSTITUTES} ${institute})
     elseif(NOT FABM_${INSTITUTE_UC}_BASE STREQUAL DEFAULT_INSTITUTE_BASE)
       # The institute directory does not exist and it was explicitly specified (because different from default).
       message(FATAL_ERROR "Source directory ${FABM_${INSTITUTE_UC}_BASE} specified for institute ${institute} not found.")
@@ -249,6 +249,12 @@ endif()
 # Begin testing section
 
 add_custom_target(test_all COMMENT "building tests - nothing yet :-)")
+
+add_executable(test_host EXCLUDE_FROM_ALL
+               test/host.F90
+               test/models.F90
+              )
+target_link_libraries(test_host fabm)
 
 # End of testing section
 
