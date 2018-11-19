@@ -312,7 +312,7 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
         ! 2.4 scale rates to temperature
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::                
         H = H*(1/rt_f_a)                                                                                            ! temperature correct handling times
-        where (isnan(H)) H = 0.0_rk                                                                                      ! get rid of NANs
+        where (isnan(H)) H = 0.0_rk ! get rid of NANs
         A_z = A_z*rt_f_a                                                                                            ! temperature correct attack rate on zooplankton
         E_m = E_m*rt_f_m                                                                                            ! temperature correct basal metabolism
         A_c = A_c*spread(rt_f_a, DIM=1,  NCOPIES=nC_fin)                                                            ! temperature correct piscivorous attack rates according to attackers temperature correction factor
@@ -321,7 +321,7 @@ call self%register_dependency(self%id_Day,    standard_variables%number_of_days_
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         if (Day >= self%cht_R_day .AND. Day <= self%cht_R_day + 1.0_rk .AND. ix_repro==0) then ! first time step of reproduction event
             where (i_mass >= self%cht_x_f .AND. r_mass > self%cht_q_J*i_mass) ! where cohorts are mature and non-starving
-                g_mass = (r_mass-self%cht_q_J*i_mass)/secs_pr_day                                                               ! calculate total loss of r_mass due to reproduction (gonad mass), which is equivalent to the daily loss rate when reproduction lasts one day
+                g_mass = (r_mass-self%cht_q_J*i_mass)/secs_pr_day                                                   ! calculate total loss of r_mass due to reproduction (gonad mass), which is equivalent to the daily loss rate when reproduction lasts one day
                 A_z = 0.0_rk                                                                                        ! reproducing individuals are not feeding
             elsewhere ! cohort is not ready to reproduce
                 g_mass = 0.0_rk                                                                                     ! no change in r_mass from reproduction for immature or starving cohorts
