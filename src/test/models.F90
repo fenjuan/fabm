@@ -41,6 +41,7 @@ contains
    procedure :: do_surface
    procedure :: do_bottom
    procedure :: get_light
+   procedure :: get_vertical_movement
 end type
 
    contains
@@ -55,17 +56,17 @@ subroutine initialize(self,configunit)
    allocate(self%id_state(self%nstate))
    do i=1,self%nstate
       write (strindex,'(i0)') i
-      call self%register_state_variable(self%id_state(i),'state'//trim(strindex),'','state variable #'//trim(strindex),vertical_movement=-real(i+interior_state_offset,rk))
+      call self%register_state_variable(self%id_state(i),'state'//trim(strindex),'','state variable #'//trim(strindex),vertical_movement=-real(i+interior_state_offset,rk), initial_value=1._rk+i+interior_state_offset, missing_value=-999._rk-interior_state_offset-i)
    end do
    allocate(self%id_surface_state(self%nsurface_state))
    do i=1,self%nsurface_state
       write (strindex,'(i0)') i
-      call self%register_state_variable(self%id_surface_state(i),'surface_state'//trim(strindex),'','surface state variable #'//trim(strindex))
+      call self%register_state_variable(self%id_surface_state(i),'surface_state'//trim(strindex),'','surface state variable #'//trim(strindex), initial_value=1._rk+i+surface_state_offset, missing_value=-999._rk-surface_state_offset-i)
    end do
    allocate(self%id_bottom_state(self%nbottom_state))
    do i=1,self%nbottom_state
       write (strindex,'(i0)') i
-      call self%register_state_variable(self%id_bottom_state(i),'bottom_state'//trim(strindex),'','bottom state variable #'//trim(strindex))
+      call self%register_state_variable(self%id_bottom_state(i),'bottom_state'//trim(strindex),'','bottom state variable #'//trim(strindex), initial_value=1._rk+i+bottom_state_offset, missing_value=-999._rk-bottom_state_offset-i)
    end do
    call self%register_dependency(self%id_dep,standard_variables%temperature)
    call self%register_dependency(self%id_depth,standard_variables%depth)
@@ -225,28 +226,35 @@ subroutine get_light(self,_ARGUMENTS_VERTICAL_)
 
    integer  :: i
    real(rk) :: value
+   real(rk) :: old_depth
+
+   old_depth = -1._rk
 
    _VERTICAL_LOOP_BEGIN_
       do i=1,self%nstate
          _GET_(self%id_state(i),value)
-         if (value/=i+interior_state_offset) call self%fatal_error('do','invalid value of interior state variable.')
-         _SET_ODE_(self%id_state(i),-value)
+         if (value/=i+interior_state_offset) call self%fatal_error('get_light','invalid value of interior state variable.')
       end do
 
       do i=1,self%nsurface_state
          _GET_HORIZONTAL_(self%id_surface_state(i),value)
-         if (value/=i+surface_state_offset) call self%fatal_error('do','invalid value of surface state variable.')
+         if (value/=i+surface_state_offset) call self%fatal_error('get_light','invalid value of surface state variable.')
       end do
 
       do i=1,self%nbottom_state
          _GET_HORIZONTAL_(self%id_bottom_state(i),value)
-         if (value/=i+bottom_state_offset) call self%fatal_error('do','invalid value of bottom state variable.')
+         if (value/=i+bottom_state_offset) call self%fatal_error('get_light','invalid value of bottom state variable.')
       end do
 
       _GET_(self%id_dep,value)
-      if (value/=1+interior_dependency_offset) call self%fatal_error('do','invalid value of interior dependency #1.')
+      if (value/=1+interior_dependency_offset) call self%fatal_error('get_light','invalid value of interior dependency #1.')
       _GET_HORIZONTAL_(self%id_hz_dep,value)
-      if (value/=1+horizontal_dependency_offset) call self%fatal_error('do','invalid value of horizontal dependency #1.')
+      if (value/=1+horizontal_dependency_offset) call self%fatal_error('get_light','invalid value of horizontal dependency #1.')
+
+      _GET_(self%id_depth,value)
+      if (value <= old_depth) &
+          call self%fatal_error('get_light','depth is not increasing as expected.')
+      old_depth = value
 
       do i=1,self%nint_diag_vert
          _SET_DIAGNOSTIC_(self%id_diag(self%nint_diag + i),1999._rk+i)
@@ -258,5 +266,36 @@ subroutine get_light(self,_ARGUMENTS_VERTICAL_)
 
    _VERTICAL_LOOP_END_
 end subroutine get_light
+
+subroutine get_vertical_movement(self,_ARGUMENTS_GET_VERTICAL_MOVEMENT_)
+   class (type_test_model),intent(in) :: self
+   _DECLARE_ARGUMENTS_GET_VERTICAL_MOVEMENT_
+
+   integer  :: i
+   real(rk) :: value
+
+   _LOOP_BEGIN_
+      do i=1,self%nstate
+         _GET_(self%id_state(i),value)
+         if (value/=i+interior_state_offset) call self%fatal_error('get_vertical_movement','invalid value of interior state variable.')
+         if (mod(i, 2) == 0) _SET_VERTICAL_MOVEMENT_(self%id_state(i),real(i+interior_state_offset,rk))
+      end do
+
+      do i=1,self%nsurface_state
+         _GET_HORIZONTAL_(self%id_surface_state(i),value)
+         if (value/=i+surface_state_offset) call self%fatal_error('get_vertical_movement','invalid value of surface state variable.')
+      end do
+
+      do i=1,self%nbottom_state
+         _GET_HORIZONTAL_(self%id_bottom_state(i),value)
+         if (value/=i+bottom_state_offset) call self%fatal_error('get_vertical_movement','invalid value of bottom state variable.')
+      end do
+
+      _GET_(self%id_dep,value)
+      if (value/=1+interior_dependency_offset) call self%fatal_error('get_vertical_movement','invalid value of interior dependency #1.')
+      _GET_HORIZONTAL_(self%id_hz_dep,value)
+      if (value/=1+horizontal_dependency_offset) call self%fatal_error('get_vertical_movement','invalid value of horizontal dependency #1.')
+   _LOOP_END_
+end subroutine get_vertical_movement
 
 end module
