@@ -3,9 +3,8 @@ module au_model_library
    use fabm_types, only: type_base_model_factory,type_base_model
 
    use au_prey_predator
-!   use fish_weight_number
-! Add new AU models here
    use fish_cohort
+   use fish_habitat
 
    implicit none
 
@@ -39,7 +38,8 @@ contains
       select case (name)
          case ('lotka_volterra'); allocate(type_au_pp_lotka_volterra::model)
          case ('jacob_monod');    allocate(type_au_pp_jacob_monod::model)
-!         case ('fish_weight_number');  allocate(type_fish_weight_number::model)
+         case ('vertical_distribution');  allocate(type_vertical_distribution::model)
+         case('depth_integral');    allocate(type_depth_integral::model)
          case ('fish_cohort');  allocate(type_fish_cohort::model)
          case default
             call self%type_base_model_factory%create(name,model)
