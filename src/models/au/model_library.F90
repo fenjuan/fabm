@@ -38,8 +38,9 @@ contains
       select case (name)
          case ('lotka_volterra'); allocate(type_au_pp_lotka_volterra::model)
          case ('jacob_monod');    allocate(type_au_pp_jacob_monod::model)
+         case ('depth_integral');    allocate(type_depth_integral::model)
          case ('vertical_distribution');  allocate(type_vertical_distribution::model)
-         case('depth_integral');    allocate(type_depth_integral::model)
+         case ('depth_integral_rate_distributor'); allocate(type_depth_integral_rate_distributor::model)
          case ('fish_cohort');  allocate(type_fish_cohort::model)
          case default
             call self%type_base_model_factory%create(name,model)
