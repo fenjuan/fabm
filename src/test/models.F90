@@ -33,6 +33,7 @@ type,extends(type_base_model) :: type_test_model
    integer :: nint_diag      = 12
    integer :: nsurface_diag  = 4
    integer :: nbottom_diag   = 6
+   integer :: nhz_diag_vert  = 3
    integer :: nint_diag_vert = 2
 contains
    procedure :: initialize
@@ -40,7 +41,10 @@ contains
    procedure :: do_surface
    procedure :: do_bottom
    procedure :: get_light
+   procedure :: get_vertical_movement
 end type
+
+integer, save, public :: loop_count = 0
 
    contains
 
@@ -54,17 +58,17 @@ subroutine initialize(self,configunit)
    allocate(self%id_state(self%nstate))
    do i=1,self%nstate
       write (strindex,'(i0)') i
-      call self%register_state_variable(self%id_state(i),'state'//trim(strindex),'','state variable #'//trim(strindex),vertical_movement=-real(i+interior_state_offset,rk))
+      call self%register_state_variable(self%id_state(i),'state'//trim(strindex),'','state variable #'//trim(strindex),vertical_movement=-real(i+interior_state_offset,rk), initial_value=1._rk+i+interior_state_offset, missing_value=-999._rk-interior_state_offset-i)
    end do
    allocate(self%id_surface_state(self%nsurface_state))
    do i=1,self%nsurface_state
       write (strindex,'(i0)') i
-      call self%register_state_variable(self%id_surface_state(i),'surface_state'//trim(strindex),'','surface state variable #'//trim(strindex))
+      call self%register_state_variable(self%id_surface_state(i),'surface_state'//trim(strindex),'','surface state variable #'//trim(strindex), initial_value=1._rk+i+surface_state_offset, missing_value=-999._rk-surface_state_offset-i)
    end do
    allocate(self%id_bottom_state(self%nbottom_state))
    do i=1,self%nbottom_state
       write (strindex,'(i0)') i
-      call self%register_state_variable(self%id_bottom_state(i),'bottom_state'//trim(strindex),'','bottom state variable #'//trim(strindex))
+      call self%register_state_variable(self%id_bottom_state(i),'bottom_state'//trim(strindex),'','bottom state variable #'//trim(strindex), initial_value=1._rk+i+bottom_state_offset, missing_value=-999._rk-bottom_state_offset-i)
    end do
    call self%register_dependency(self%id_dep,standard_variables%temperature)
    call self%register_dependency(self%id_depth,standard_variables%depth)
@@ -77,16 +81,20 @@ subroutine initialize(self,configunit)
    end do
    do i=1,self%nint_diag_vert
       write (strindex,'(i0)') i
-      call self%register_diagnostic_variable(self%id_diag(self%nint_diag + i),'vertical_diagnostic'//trim(strindex),'','vertical diagnostic variable #'//trim(strindex),missing_value=-3999._rk - i, source=source_do_column)
+      call self%register_diagnostic_variable(self%id_diag(self%nint_diag + i),'vertical_diagnostic'//trim(strindex),'','vertical diagnostic variable #'//trim(strindex),missing_value=-1999._rk - i, source=source_do_column)
    end do
-   allocate(self%id_horizontal_diag(self%nsurface_diag + self%nbottom_diag))
+   allocate(self%id_horizontal_diag(self%nsurface_diag + self%nbottom_diag + self%nhz_diag_vert))
    do i=1,self%nsurface_diag
       write (strindex,'(i0)') i
-      call self%register_diagnostic_variable(self%id_horizontal_diag(i),'surface_diagnostic'//trim(strindex),'','surface diagnostic variable #'//trim(strindex),missing_value=-1999._rk - i,source=source_do_surface)
+      call self%register_diagnostic_variable(self%id_horizontal_diag(i),'surface_diagnostic'//trim(strindex),'','surface diagnostic variable #'//trim(strindex),missing_value=-2999._rk - i,source=source_do_surface)
    end do
    do i=1,self%nbottom_diag
       write (strindex,'(i0)') i
-      call self%register_diagnostic_variable(self%id_horizontal_diag(self%nsurface_diag + i),'bottom_diagnostic'//trim(strindex),'','bottom diagnostic variable #'//trim(strindex),missing_value=-2999._rk - i,source=source_do_bottom)
+      call self%register_diagnostic_variable(self%id_horizontal_diag(self%nsurface_diag + i),'bottom_diagnostic'//trim(strindex),'','bottom diagnostic variable #'//trim(strindex),missing_value=-3999._rk - i,source=source_do_bottom)
+   end do
+   do i=1,self%nhz_diag_vert
+      write (strindex,'(i0)') i
+      call self%register_diagnostic_variable(self%id_horizontal_diag(self%nsurface_diag + self%nbottom_diag + i),'vert_hz_diagnostic'//trim(strindex),'','horizontal diagnostic variable set from get_light #'//trim(strindex),missing_value=-4999._rk - i,source=source_do_column)
    end do
 end subroutine initialize
 
@@ -123,6 +131,7 @@ subroutine do(self,_ARGUMENTS_DO_)
          _SET_DIAGNOSTIC_(self%id_diag(i),999._rk+i)
       end do
 
+      loop_count = loop_count + 1
    _LOOP_END_
 end subroutine do
 
@@ -164,9 +173,10 @@ subroutine do_surface(self,_ARGUMENTS_DO_SURFACE_)
       if (value/=1+horizontal_dependency_offset) call self%fatal_error('do_surface','invalid value of horizontal dependency #1.')
 
       do i=1,self%nsurface_diag
-         _SET_HORIZONTAL_DIAGNOSTIC_(self%id_horizontal_diag(i),1999._rk+i)
+         _SET_HORIZONTAL_DIAGNOSTIC_(self%id_horizontal_diag(i),2999._rk+i)
       end do
 
+      loop_count = loop_count + 1
    _HORIZONTAL_LOOP_END_
 end subroutine do_surface
 
@@ -208,9 +218,10 @@ subroutine do_bottom(self,_ARGUMENTS_DO_SURFACE_)
       if (value/=1+horizontal_dependency_offset) call self%fatal_error('do_bottom','invalid value of horizontal dependency #1.')
 
       do i=1,self%nbottom_diag
-         _SET_HORIZONTAL_DIAGNOSTIC_(self%id_horizontal_diag(self%nsurface_diag + i),2999._rk+i)
+         _SET_HORIZONTAL_DIAGNOSTIC_(self%id_horizontal_diag(self%nsurface_diag + i),3999._rk+i)
       end do
 
+      loop_count = loop_count + 1
    _HORIZONTAL_LOOP_END_
 end subroutine do_bottom
 
@@ -220,34 +231,79 @@ subroutine get_light(self,_ARGUMENTS_VERTICAL_)
 
    integer  :: i
    real(rk) :: value
+   real(rk) :: old_depth
+
+   old_depth = -1._rk
 
    _VERTICAL_LOOP_BEGIN_
       do i=1,self%nstate
          _GET_(self%id_state(i),value)
-         if (value/=i+interior_state_offset) call self%fatal_error('do','invalid value of interior state variable.')
-         _SET_ODE_(self%id_state(i),-value)
+         if (value/=i+interior_state_offset) call self%fatal_error('get_light','invalid value of interior state variable.')
       end do
 
       do i=1,self%nsurface_state
          _GET_HORIZONTAL_(self%id_surface_state(i),value)
-         if (value/=i+surface_state_offset) call self%fatal_error('do','invalid value of surface state variable.')
+         if (value/=i+surface_state_offset) call self%fatal_error('get_light','invalid value of surface state variable.')
       end do
 
       do i=1,self%nbottom_state
          _GET_HORIZONTAL_(self%id_bottom_state(i),value)
-         if (value/=i+bottom_state_offset) call self%fatal_error('do','invalid value of bottom state variable.')
+         if (value/=i+bottom_state_offset) call self%fatal_error('get_light','invalid value of bottom state variable.')
       end do
 
       _GET_(self%id_dep,value)
-      if (value/=1+interior_dependency_offset) call self%fatal_error('do','invalid value of interior dependency #1.')
+      if (value/=1+interior_dependency_offset) call self%fatal_error('get_light','invalid value of interior dependency #1.')
       _GET_HORIZONTAL_(self%id_hz_dep,value)
-      if (value/=1+horizontal_dependency_offset) call self%fatal_error('do','invalid value of horizontal dependency #1.')
+      if (value/=1+horizontal_dependency_offset) call self%fatal_error('get_light','invalid value of horizontal dependency #1.')
+
+      _GET_(self%id_depth,value)
+      if (value <= old_depth) &
+          call self%fatal_error('get_light','depth is not increasing as expected.')
+      old_depth = value
 
       do i=1,self%nint_diag_vert
-         _SET_DIAGNOSTIC_(self%id_diag(self%nint_diag + i),3999._rk+i)
+         _SET_DIAGNOSTIC_(self%id_diag(self%nint_diag + i),1999._rk+i)
       end do
 
+      do i=1,self%nhz_diag_vert
+         _SET_HORIZONTAL_DIAGNOSTIC_(self%id_horizontal_diag(self%nsurface_diag + self%nbottom_diag + i),4999._rk+i)
+      end do
+
+      loop_count = loop_count + 1
    _VERTICAL_LOOP_END_
 end subroutine get_light
+
+subroutine get_vertical_movement(self,_ARGUMENTS_GET_VERTICAL_MOVEMENT_)
+   class (type_test_model),intent(in) :: self
+   _DECLARE_ARGUMENTS_GET_VERTICAL_MOVEMENT_
+
+   integer  :: i
+   real(rk) :: value
+
+   _LOOP_BEGIN_
+      do i=1,self%nstate
+         _GET_(self%id_state(i),value)
+         if (value/=i+interior_state_offset) call self%fatal_error('get_vertical_movement','invalid value of interior state variable.')
+         if (mod(i, 2) == 0) _SET_VERTICAL_MOVEMENT_(self%id_state(i),real(i+interior_state_offset,rk))
+      end do
+
+      do i=1,self%nsurface_state
+         _GET_HORIZONTAL_(self%id_surface_state(i),value)
+         if (value/=i+surface_state_offset) call self%fatal_error('get_vertical_movement','invalid value of surface state variable.')
+      end do
+
+      do i=1,self%nbottom_state
+         _GET_HORIZONTAL_(self%id_bottom_state(i),value)
+         if (value/=i+bottom_state_offset) call self%fatal_error('get_vertical_movement','invalid value of bottom state variable.')
+      end do
+
+      _GET_(self%id_dep,value)
+      if (value/=1+interior_dependency_offset) call self%fatal_error('get_vertical_movement','invalid value of interior dependency #1.')
+      _GET_HORIZONTAL_(self%id_hz_dep,value)
+      if (value/=1+horizontal_dependency_offset) call self%fatal_error('get_vertical_movement','invalid value of horizontal dependency #1.')
+
+      loop_count = loop_count + 1
+   _LOOP_END_
+end subroutine get_vertical_movement
 
 end module
