@@ -15,7 +15,7 @@ module fish_interface
        !variables
        type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_pvar(:,:)                          ! for saving local variable values, holds a number of local values equal to number of depth cells x variables
        type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_thickness(:)                       ! for saving local cell thicknesses, holds a number of local values equal to number of depth cells
-       type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_temperature(:)                       ! for saving local cell thicknesses, holds a number of local values equal to number of depth cells
+       type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_temperature(:)                     ! for saving local cell thicknesses, holds a number of local values equal to number of depth cells
        
        type (type_state_variable_id), allocatable                    :: id_targets_in(:)                            ! the target variables (e.g. zooplankton,light,oxygen) (NOTE: NOT the same as in fish_rate_distributor!)
        type (type_dependency_id)                                     :: id_thickness                                ! cell thickness; this will be needed for calculating/allocating fish predation
@@ -33,7 +33,7 @@ module fish_interface
        type (type_state_variable_id)                                 :: id_DPOMpoolW, id_PPOMpoolW, id_NPOMpoolW
        type (type_state_variable_id)                                 :: id_NH4poolW, id_PO4poolW, id_DDOMpoolW
        type (type_state_variable_id)                                 :: id_PDOMpoolW,id_NDOMpoolW
-       type (type_diagnostic_variable_id)                            :: id_BOT_FEED
+       type (type_diagnostic_variable_id)                 :: id_BOT_FEED
 
        type (type_state_variable_id), allocatable                    :: id_targets_preyDW(:), id_targets_preyN(:)   ! prey variable ids that should absorp the sources-sinks (NOTE: NOT the same as in get_pvar!)
        type (type_state_variable_id), allocatable                    :: id_targets_preyP(:)
@@ -44,7 +44,7 @@ module fish_interface
        integer                                                       :: nlev, nprey                           ! number of layers in host model setup, number of passive and prey variables to get, and number of cohorts 
     contains
        procedure :: initialize => fish_rate_dist_initialize
-       procedure :: do         => fish_rate_dist_do ! currently only get_light supports non-local action in depth
+       procedure :: get_light  => fish_rate_dist_do ! currently only get_light supports non-local action in depth
     end type
 
 !xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -60,7 +60,6 @@ contains
         
         integer                                    :: i_z, i_v
         character(len=64)   :: index_z, index_v
-
         
         call self%get_parameter(self%nlev,'nlev', '-', 'Number of depth levels in water column (same as in host model)')       ! number of depth levels in simulation
         call self%get_parameter(self%nvars,'nvars', '-', 'Number of variables to get')                                         ! number of depth levels in simulation
@@ -71,20 +70,21 @@ contains
         ! this should be allocated:
         allocate(self%id_local_pvar(self%nlev,self%nvars))
         allocate(self%id_local_thickness(self%nlev))
+        allocate(self%id_local_temperature(self%nlev))
         allocate(self%id_targets_in(self%nvars))
         do i_z=1,self%nlev
             write(index_z,'(i0)') i_z
-            call self%register_diagnostic_variable(self%id_local_thickness(i_z),'dz_at_z'//trim(index_z),'','local cell thickness at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
-                          act_as_state_variable=.true.,domain=domain_surface,output=output_none)                                        ! current cell thickness
-            call self%register_diagnostic_variable(self%id_local_temperature(i_z),'uTm_at_z'//trim(index_z),'','local cell temperature at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
-                          act_as_state_variable=.true.,domain=domain_surface,output=output_none)                                        ! current cell thickness
+            call self%register_diagnostic_variable(self%id_local_thickness(i_z),'dz_z'//trim(index_z),'','local cell thickness at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
+                          act_as_state_variable=.true.,domain=domain_surface,output=output_none,source=source_do_column,missing_value=0.0_rk)                                        ! current cell thickness
+            call self%register_diagnostic_variable(self%id_local_temperature(i_z),'uTm_z'//trim(index_z),'','local cell temperature at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
+                          act_as_state_variable=.true.,domain=domain_surface,output=output_none,source=source_do_column,missing_value=0.0_rk)                                        ! current cell thickness
             do i_v=1,self%nvars
                  write(index_v,'(i0)') i_v
                  if (i_z==1) then
                       call self%register_state_dependency(self%id_targets_in(i_v), 'target'//trim(index_v), '', 'saved variable nr '//trim(index_v))                          ! the target variable (e.g zooplankton)
                  endif
                  call self%register_diagnostic_variable(self%id_local_pvar(i_z,i_v),'pvar'//trim(index_v)//'_at_z'//trim(index_z),'','local value of var'//trim(index_v)//' at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
-                          act_as_state_variable=.true.,domain=domain_surface,output=output_none)
+                          act_as_state_variable=.true.,domain=domain_surface,output=output_none,source=source_do_column,missing_value=0.0_rk)
             end do
         end do
     end subroutine get_pvar_initialize  
@@ -95,21 +95,29 @@ contains
         class (type_get_pvar),intent(in) :: self
         _DECLARE_ARGUMENTS_VERTICAL_
 
-        real(rk) :: local,thickness
+        real(rk), dimension(self%nlev)              :: thickness, uTm
+        real(rk), dimension(self%nlev,self%nvars)   :: locals
         integer  :: i_z, i_v
 
-        i_z=1
+        i_z=0
         
         _VERTICAL_LOOP_BEGIN_
-        do i_v=1,self%nvars
-           _GET_(self%id_targets_in(i_v),local)
-          _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_pvar(i_z,i_v),local)
-        end do
-        _GET_(self%id_thickness,thickness)
-        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_thickness(i_z),thickness)
-        
-        i_z=i_z+1
+            i_z = i_z +1
+            
+            do i_v=1,self%nvars
+               _GET_(self%id_targets_in(i_v),locals(i_z,i_v))
+               !_SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_pvar(i_z,i_v),local)
+            end do
+            _GET_(self%id_thickness,thickness(i_z))
+            _GET_(self%id_uTm,uTm(i_z))
+            !_SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_thickness(i_z),thickness)
         _VERTICAL_LOOP_END_
+        
+        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_thickness,thickness)
+        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_temperature,uTm)
+        do i_v=1,self%nvars
+            _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_pvar(:,i_v),locals(:,i_v))
+        end do           
     end subroutine get_pvar_do
     
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -125,8 +133,19 @@ contains
         
         call self%get_parameter(self%nlev,'nlev', '-', 'Number of depth levels in water column (same as in host model)')       ! number of depth levels in simulation
         call self%get_parameter(self%nprey,'nprey', '-', 'Number of target prey variables')
-        call self%register_diagnostic_variable(self%id_BOT_FEED,'bottom_activity','g m-3 ','bottom activity', output=output_none)
-
+        
+        call self%register_diagnostic_variable(self%id_BOT_FEED,'bottom_activity','g m-2','bottom activity', & ! not sure about act_as_state_variable
+                          act_as_state_variable=.true.,output=output_none,source=source_do_column,missing_value=0.0_rk)
+        
+        call self%register_state_dependency(self%id_DPOMpoolW,    'POM_DW_pool_water',     'g m-3', 'POM DW pool in water')
+        call self%register_state_dependency(self%id_NPOMpoolW,    'POM_N_pool_water',      'g m-3', 'POM N pool in water')
+        call self%register_state_dependency(self%id_PPOMpoolW,    'POM_P_pool_water',      'g m-3', 'POM P pool in water')
+        call self%register_state_dependency(self%id_NH4poolW,     'NH4_pool_water',        'g m-3', 'NH4 pool in water')
+        call self%register_state_dependency(self%id_PO4poolW,     'PO4_pool_water',        'g m-3', 'PO4 pool in water')
+        call self%register_state_dependency(self%id_DDOMpoolW,    'DOM_DW_pool_water',     'g m-3', 'DOM DW in water')
+        call self%register_state_dependency(self%id_NDOMpoolW,    'DOM_N_pool_water',      'g m-3', 'DOM N in water')
+        call self%register_state_dependency(self%id_PDOMpoolW,    'DOM_P_pool_water',      'g m-3', 'DOM P in water')
+        
         allocate(self%id_targets_preyDW(self%nprey))
         allocate(self%id_targets_preyN(self%nprey))
         allocate(self%id_targets_preyP(self%nprey))
@@ -157,42 +176,46 @@ contains
     !===============================================================================================================
     ! do part
     !===============================================================================================================
-    subroutine fish_rate_dist_do(self,_ARGUMENTS_DO_)
+    subroutine fish_rate_dist_do(self,_ARGUMENTS_VERTICAL_)
         class (type_fish_rate_dist),intent(in) :: self
-        _DECLARE_ARGUMENTS_DO_
+        _DECLARE_ARGUMENTS_VERTICAL_
 
-        real(rk)                :: lossDW, lossN, lossP
-        real(rk), dimension(9)  :: rate
-        integer                 :: i_pas, i_prey, i_z
+        real(rk), dimension(self%nlev,self%nprey)  :: lossDW, lossN, lossP
+        real(rk), dimension(self%nlev,9)           :: rate
+        integer                                     :: i_pas, i_prey, i_z
         
-        i_z=1
+        i_z=0
         
-        _LOOP_BEGIN_
+        !!! GET HORIZONTAL DIAGNOSTICS BEFORE LOOP !!!
+        do i_pas=1,9
+              _GET_HORIZONTAL_(self%id_pas_rates(:,i_pas),rate(:,i_pas))
+        end do
+        do i_prey=1,self%nprey
+              _GET_HORIZONTAL_(self%id_prey_loss_DW(:,i_prey),lossDW(:,i_prey))
+              _GET_HORIZONTAL_(self%id_prey_loss_N(:,i_prey),lossN(:,i_prey))
+              _GET_HORIZONTAL_(self%id_prey_loss_P(:,i_prey),lossP(:,i_prey))
+        end do
+        
+        _VERTICAL_LOOP_BEGIN_
+            i_z=i_z+1
            ! First update passive target variables.
-           do i_pas=1,9
-              _GET_HORIZONTAL_(self%id_pas_rates(i_z,i_pas),rate(i_pas))
-           end do
-           _SET_ODE_(self%id_NH4poolW, rate(1))
-           _SET_ODE_(self%id_PO4poolW, rate(2))
-           _SET_ODE_(self%id_DPOMpoolW, rate(3))
-           _SET_ODE_(self%id_DDOMpoolW, rate(4))
-           _SET_ODE_(self%id_PPOMpoolW, rate(5))
-           _SET_ODE_(self%id_PDOMpoolW, rate(6))
-           _SET_ODE_(self%id_NPOMpoolW, rate(7))
-           _SET_ODE_(self%id_NDOMpoolW, rate(8))
-           _SET_DIAGNOSTIC_(self%id_BOT_FEED, rate(9))
+           _SET_ODE_(self%id_NH4poolW, rate(i_z,1))
+           _SET_ODE_(self%id_PO4poolW, rate(i_z,2))
+           _SET_ODE_(self%id_DPOMpoolW, rate(i_z,3))
+           _SET_ODE_(self%id_DDOMpoolW, rate(i_z,4))
+           _SET_ODE_(self%id_PPOMpoolW, rate(i_z,5))
+           _SET_ODE_(self%id_PDOMpoolW, rate(i_z,6))
+           _SET_ODE_(self%id_NPOMpoolW, rate(i_z,7))
+           _SET_ODE_(self%id_NDOMpoolW, rate(i_z,8))
+           _SET_DIAGNOSTIC_(self%id_BOT_FEED, rate(i_z,9))
+           
            ! then update prey variables
            do i_prey=1,self%nprey
-              _GET_HORIZONTAL_(self%id_prey_loss_DW(i_z,i_prey),lossDW)
-              _GET_HORIZONTAL_(self%id_prey_loss_N(i_z,i_prey),lossN)
-              _GET_HORIZONTAL_(self%id_prey_loss_P(i_z,i_prey),lossP)
-              
-              _SET_ODE_(self%id_targets_preyDW(i_prey),lossDW)
-              _SET_ODE_(self%id_targets_preyN(i_prey),lossN)
-              _SET_ODE_(self%id_targets_preyP(i_prey),lossP)
+                _SET_ODE_(self%id_targets_preyDW(i_prey),lossDW(i_z,i_prey))
+                _SET_ODE_(self%id_targets_preyN(i_prey),lossN(i_z,i_prey))
+                _SET_ODE_(self%id_targets_preyP(i_prey),lossP(i_z,i_prey))
            end do
            
-           i_z=i_z+1
-        _LOOP_END_
+        _VERTICAL_LOOP_END_
     end subroutine fish_rate_dist_do
 end module

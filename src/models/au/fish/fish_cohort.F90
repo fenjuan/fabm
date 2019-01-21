@@ -33,7 +33,7 @@ module fish_cohort
        type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_prey_loss_N(:)
        type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_pas_rates(:,:)
  
-       ! environmental dependencies---------------------------------------------------------------------------------
+       ! environmental dependencies and internal switches-----------------------------------------------------------
        type (type_horizontal_dependency_id), allocatable     ::  id_ZD(:)
        type (type_horizontal_dependency_id), allocatable     ::  id_ZN(:)
        type (type_horizontal_dependency_id), allocatable     ::  id_ZP(:)
@@ -41,6 +41,9 @@ module fish_cohort
        type (type_horizontal_dependency_id), allocatable     ::  id_uTm(:)
        
        type (type_global_dependency_id)                      ::  id_Day
+       
+       type (type_horizontal_diagnostic_variable_id)         ::  id_ix_repro_out
+       type (type_horizontal_dependency_id)                  ::  id_ix_repro_in
        
        ! temprorary placeholder parameters--------------------------------------------------------------------------
        real(rk)     ::  cht_m,          cht_Q10_z
@@ -159,7 +162,7 @@ contains
         
         do i_pas=1,9
             write(index_pas,'(i0)') i_pas
-            call self%register_diagnostic_variable(self%id_pas_rates(i_z,i_pas),'pas_rate_var_'//trim(index_pas)//'_z'//trim(index_z),'-','rate of change of passive variable '//trim(index_pas)//' at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none)
+            call self%register_diagnostic_variable(self%id_pas_rates(i_z,i_pas),'pas_rate_var'//trim(index_pas)//'_z'//trim(index_z),'-','rate of change of passive variable '//trim(index_pas)//' at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none)
         end do
     end do
     
@@ -180,7 +183,7 @@ contains
        write (index_nc,'(i0)'), i_nc
        call self%register_state_variable(self%id_N(i_nc),'N'//trim(index_nc), '[m^-2]','abundance of cohort number '//trim(index_nc),initial_value= 0._rk, minimum=0.0_rk)
        call self%register_state_variable(self%id_r_mass(i_nc),'r_mass'//trim(index_nc),'[gDW]','reversible mass of cohort number '//trim(index_nc),initial_value= self%cht_q_J*self%cht_w_b/(1+self%cht_q_J), minimum=0.0_rk)
-       call self%register_state_variable(self%id_i_mass(i_nc),'i_mass'//trim(index_nc),'[gDW]','irrevarsible mass of cohort number '//trim(index_nc),initial_value=self%cht_w_b/(1+self%cht_q_J), minimum=0.0_rk)
+       call self%register_state_variable(self%id_i_mass(i_nc),'i_mass'//trim(index_nc),'[gDW]','irreversible mass of cohort number '//trim(index_nc),initial_value=self%cht_w_b/(1+self%cht_q_J), minimum=0.0_rk)
         
        call self%register_state_variable(self%id_N_mass(i_nc),'N_mass'//trim(index_nc),'[gN]','nitrogen mass of cohort number '//trim(index_nc),initial_value= self%cht_w_b*self%cht_ND_Ref, minimum=0.0_rk)
        call self%register_state_variable(self%id_P_mass(i_nc),'P_mass'//trim(index_nc),'[gP]','phospherous mass of cohort number '//trim(index_nc),initial_value= self%cht_w_b*self%cht_PD_Ref, minimum=0.0_rk)
@@ -196,6 +199,9 @@ contains
     
     !  register environmental dependencies
     call self%register_dependency(self%id_Day,standard_variables%number_of_days_since_start_of_the_year)
+    
+    call self%register_diagnostic_variable(self%id_ix_repro_out,'repro_switch','-','reproductive switch',act_as_state_variable=.true.,domain=domain_surface,output=output_none)
+    call self%register_horizontal_dependency(self%id_ix_repro_in,'repro_switch','-','reproductive switch')
     
     return
     end subroutine initialize
@@ -269,6 +275,9 @@ contains
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     ! 1. retrieve variable values, update trackers & variables:
     !===============================================================================================================
+        ! allocate dimensions for saved cohort-specific variables
+        nC_fin = self%cht_nC+self%cht_nc_init                                                                       ! calculate total number of cohorts
+        !===========================================================================================================
         ! 1.1 get cohort state variables
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         _GET_HORIZONTAL_(self%id_N,N)                                                                               ! get cohort abundance
@@ -297,6 +306,8 @@ contains
         _GET_GLOBAL_(self%id_Day,Day)                                                                               ! get current julian day
         _GET_HORIZONTAL_(self%id_dz,dz)                                                                             ! get layer depths
         _GET_HORIZONTAL_(self%id_uTm,uTm)                                                                           ! get layer temperatures
+        _GET_HORIZONTAL_(self%id_ix_repro_in,ix_repro)                                                              ! get reproductive switch status
+
         do i=1,nC_fin
             _GET_HORIZONTAL_(self%id_dist_in(i,:),dist(i,:))                                                        ! get current fidh distributions (dimensions: nC_fin x nlev)
         end do
@@ -310,9 +321,6 @@ contains
         else
             tcheck=0
         endif
-        
-        ! allocate dimensions for saved cohort-specific variables
-        nC_fin = self%cht_nC+self%cht_nc_init                                                                       ! calculate total number of cohorts
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     ! 2. do fish:
     !===============================================================================================================
@@ -385,12 +393,13 @@ contains
             g_mass = 0.0_rk                                                                                         ! no reproduction outside reproductive event
         endif
         F_tot = sum(g_mass*N*self%cht_k_r/self%cht_w_b)                                                             ! calculate total number of produced offspring (zero when g_mass is zero)
+        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_ix_repro_out,ix_repro)                                                  ! update reproductive switch
         !===========================================================================================================
         ! 2.5 calculate depth- and temperature-specific rates
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         A_z_M = spread(A_z, DIM=2, NCOPIES=self%cht_nlev)*rt_a                                                      ! depth-specific temperature corrected attack rates (dimensions: nC_fin x nlev)
         H_M = spread(H, DIM=2, NCOPIES=self%cht_nlev)*(1/rt_a)                                                      ! depth-specific temperature corrected handling times (dimensions: nC_fin x nlev)
-        where (isnan(H)) H = 0.0_rk                                                                                 ! get rid of NANs
+        where (isnan(H_M)) H_M = 0.0_rk                                                                                 ! get rid of NANs
         A_c_M = spread(A_c, DIM=3, NCOPIES=self%cht_nlev)*spread(rt_a, DIM=1, NCOPIES=nC_fin)                       ! depth-specific temperature corrected piscivorous attack rate matrix (dimensions: nC_fin x nC_fin x nlev)
         E_m_P = spread(E_m, DIM=2, NCOPIES=self%cht_nlev)*rt_m                                                      ! depth-specific temperature corrected basal metabolism (dimensions: nC_fin x nlev)
         !===========================================================================================================
@@ -420,8 +429,8 @@ contains
         ! 2.7 stochiometric correction of respiration
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         where (N>0.0_rk) ! non-empty cohorts
-            PD = P_mass / (r_mass*i_mass)                                                                           ! calculate current cohort P/D ratios
-            ND = N_mass / (r_mass*i_mass)                                                                           ! calculate current cohort N/D ratios
+            PD = P_mass / (r_mass+i_mass)                                                                           ! calculate current cohort P/D ratios
+            ND = N_mass / (r_mass+i_mass)                                                                           ! calculate current cohort N/D ratios
         elsewhere ! empty cohorts
             PD = 1.0_rk                                                                                             ! prevents INF and NAN results later
             ND = 1.0_rk                                                                                             ! prevents INF and NAN results later
@@ -519,11 +528,11 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
             ! 4.2.1 phosphorous
             !-------------------------------------------------------------------------------------------------------
-            P_exc = spread(PD/self%cht_PD_Ref, DIM=2, NCOPIES=self%cht_nlev) * E_m_M                                ! calculate rates of P excretion (dimensions: nC_fin x nlev)
+            P_exc = spread(PD*PD/self%cht_PD_Ref, DIM=2, NCOPIES=self%cht_nlev) * E_m_M                             ! calculate rates of P excretion (dimensions: nC_fin x nlev)
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
             ! 4.2.2 nitrogen
             !-------------------------------------------------------------------------------------------------------
-            N_exc = spread(ND/self%cht_ND_Ref, DIM=2, NCOPIES=self%cht_nlev) * E_m_M                                ! calculate rates of N excretion (dimensions: nC_fin x nlev)
+            N_exc = spread(ND*ND/self%cht_ND_Ref, DIM=2, NCOPIES=self%cht_nlev) * E_m_M                             ! calculate rates of N excretion (dimensions: nC_fin x nlev)
         !===========================================================================================================
         ! 4.3 egestion
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
