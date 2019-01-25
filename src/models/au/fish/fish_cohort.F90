@@ -156,13 +156,13 @@ contains
         call self%register_horizontal_dependency(self%id_dz(i_z),'dz_at_z'//trim(index_z),'m','layer depth at depth interval '//trim(index_z))
         call self%register_horizontal_dependency(self%id_uTm(i_z),'uTm_at_z'//trim(index_z),'*C','temperature at depth interval '//trim(index_z))
         
-        call self%register_diagnostic_variable(self%id_prey_loss_DW(i_z),'prey_lossDW_z'//trim(index_z),'-','prey DW loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none)
-        call self%register_diagnostic_variable(self%id_prey_loss_P(i_z),'prey_lossP_z'//trim(index_z),'-','prey P loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none)
-        call self%register_diagnostic_variable(self%id_prey_loss_N(i_z),'prey_lossN_z'//trim(index_z),'-','prey N loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none)
+        call self%register_diagnostic_variable(self%id_prey_loss_DW(i_z),'prey_lossDW_z'//trim(index_z),'-','prey DW loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
+        call self%register_diagnostic_variable(self%id_prey_loss_P(i_z),'prey_lossP_z'//trim(index_z),'-','prey P loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
+        call self%register_diagnostic_variable(self%id_prey_loss_N(i_z),'prey_lossN_z'//trim(index_z),'-','prey N loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
         
         do i_pas=1,9
             write(index_pas,'(i0)') i_pas
-            call self%register_diagnostic_variable(self%id_pas_rates(i_z,i_pas),'pas_rate_var'//trim(index_pas)//'_z'//trim(index_z),'-','rate of change of passive variable '//trim(index_pas)//' at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none)
+            call self%register_diagnostic_variable(self%id_pas_rates(i_z,i_pas),'pas_rate_var'//trim(index_pas)//'_z'//trim(index_z),'-','rate of change of passive variable '//trim(index_pas)//' at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
         end do
     end do
     
@@ -181,7 +181,7 @@ contains
     
     do i_nc=1,self%cht_nC+self%cht_nc_init
        write (index_nc,'(i0)'), i_nc
-       call self%register_state_variable(self%id_N(i_nc),'N'//trim(index_nc), '[m^-2]','abundance of cohort number '//trim(index_nc),initial_value= 0._rk, minimum=0.0_rk)
+       call self%register_state_variable(self%id_N(i_nc),'n'//trim(index_nc), '[m^-2]','abundance of cohort number '//trim(index_nc),initial_value= 0._rk, minimum=0.0_rk)
        call self%register_state_variable(self%id_r_mass(i_nc),'r_mass'//trim(index_nc),'[gDW]','reversible mass of cohort number '//trim(index_nc),initial_value= self%cht_q_J*self%cht_w_b/(1+self%cht_q_J), minimum=0.0_rk)
        call self%register_state_variable(self%id_i_mass(i_nc),'i_mass'//trim(index_nc),'[gDW]','irreversible mass of cohort number '//trim(index_nc),initial_value=self%cht_w_b/(1+self%cht_q_J), minimum=0.0_rk)
         
@@ -441,6 +441,7 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         E_a = self%cht_k_e*Ing                                                                                      ! calculate assimilation
         E_g = E_a-E_m_corr                                                                                          ! final growth (or degrowth)
+        E_g = max(E_g,-E_m_corr/10.0_rk)                                                                                                                  ! test effect of depressed starvation metabolism
         where (r_mass<self%cht_q_s*i_mass) ! find which cohorts are starving
             mu_s = (self%cht_s*(self%cht_q_s*i_mass/r_mass-1.0_rk))                                                 ! calculate starvation mortality
         elsewhere
