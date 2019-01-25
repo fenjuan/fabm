@@ -6,6 +6,7 @@ module au_model_library
 !   use fish_weight_number
 ! Add new AU models here
    use fish_cohort
+   use fish_interface
 
    implicit none
 
@@ -41,6 +42,9 @@ contains
          case ('jacob_monod');    allocate(type_au_pp_jacob_monod::model)
 !         case ('fish_weight_number');  allocate(type_fish_weight_number::model)
          case ('fish_cohort');  allocate(type_fish_cohort::model)
+         case ('get_pvar');  allocate(type_get_pvar::model)
+         case ('fish_rate_dist');  allocate(type_fish_rate_dist::model)
+             
          case default
             call self%type_base_model_factory%create(name,model)
 !           Add new AU models here

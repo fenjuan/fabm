@@ -4,6 +4,7 @@ add_library(fabm_models_au OBJECT
             prey_predator/lotka_volterra.F90
             prey_predator/jacob_monod.F90
 			fish/fish_cohort.F90
+			fish/fish_interface.F90
            )
 
 add_dependencies(fabm_models_au fabm_base)
