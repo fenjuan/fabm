@@ -441,7 +441,7 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         E_a = self%cht_k_e*Ing                                                                                      ! calculate assimilation
         E_g = E_a-E_m_corr                                                                                          ! final growth (or degrowth)
-        E_g = max(E_g,-E_m_corr/10.0_rk)                                                                                                                  ! test effect of depressed starvation metabolism
+        E_g = max(E_g,-E_m_corr/5.0_rk)                                                                                                                  ! test effect of depressed starvation metabolism
         where (r_mass<self%cht_q_s*i_mass) ! find which cohorts are starving
             mu_s = (self%cht_s*(self%cht_q_s*i_mass/r_mass-1.0_rk))                                                 ! calculate starvation mortality
         elsewhere
