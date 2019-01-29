@@ -441,7 +441,7 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         E_a = self%cht_k_e*Ing                                                                                      ! calculate assimilation
         E_g = E_a-E_m_corr                                                                                          ! final growth (or degrowth)
-        E_g = max(E_g,-E_m_corr/5.0_rk)                                                                                                                  ! test effect of depressed starvation metabolism
+        E_g = max(E_g,-E_m_corr/4.0_rk)                                                                                                                  ! test effect of depressed starvation metabolism
         where (r_mass<self%cht_q_s*i_mass) ! find which cohorts are starving
             mu_s = (self%cht_s*(self%cht_q_s*i_mass/r_mass-1.0_rk))                                                 ! calculate starvation mortality
         elsewhere
@@ -456,11 +456,11 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         d_N = -mu*N                                                                                                 ! rate of change of cohort abundances (mortality)
         where (E_g>=0.0_rk .AND. i_mass>=self%cht_x_f .AND. N>0.0_rk) ! mature non-empty cohorts with positive growth
-            d_imass = (1.0_rk/((1.0_rk+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass)*E_g                             ! calculate part of growth allocated to structure
-            d_rmass = (1.0_rk-(1.0_rk/((1.0_rk+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass))*E_g - g_mass           ! calculate part of growth allocated to reserves and gonads
+            d_imass = (1.0_rk/((1.0_rk+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass)**2*E_g                             ! calculate part of growth allocated to structure
+            d_rmass = (1.0_rk-(1.0_rk/((1.0_rk+self%cht_q_A)*self%cht_q_A))*(r_mass/i_mass)**2)*E_g - g_mass           ! calculate part of growth allocated to reserves and gonads
         elsewhere (E_g>=0.0_rk .AND. i_mass<self%cht_x_f .AND. N>0.0_rk) ! juvenile non-empty cohorts with positive growth
-            d_imass = (1.0_rk/((1.0_rk+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass)*E_g                             ! calculate part of growth allocated to structure
-            d_rmass = (1.0_rk-(1.0_rk/((1.0_rk+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass))*E_g - g_mass           ! calculate part of growth allocated to reserves
+            d_imass = (1.0_rk/((1.0_rk+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass)**2*E_g                             ! calculate part of growth allocated to structure
+            d_rmass = (1.0_rk-(1.0_rk/((1.0_rk+self%cht_q_J)*self%cht_q_J))*(r_mass/i_mass)**2)*E_g - g_mass           ! calculate part of growth allocated to reserves
         elsewhere (E_g<0.0_rk) ! cohorts with negative growth
             d_imass = 0.0_rk                                                                                        ! no change in structural tissues when growth is negative
             d_rmass = E_g - g_mass                                                                                  ! loss of reserves due to negative growth
