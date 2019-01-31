@@ -13,9 +13,16 @@ standard_variables%attenuation_coefficient_of_shortwave_flux%name = 'attenuation
 standard_variables%attenuation_coefficient_of_shortwave_flux%units = 'm-1'
 standard_variables%attenuation_coefficient_of_shortwave_flux%aggregate_variable = .true.
 
+standard_variables%cell_area%name = 'cell_area'
+standard_variables%cell_area%units = 'm2'
+standard_variables%cell_area%cf_names = 'cell_area'
+
 standard_variables%cell_thickness%name = 'cell_thickness'
 standard_variables%cell_thickness%units = 'm'
 standard_variables%cell_thickness%cf_names = 'cell_thickness'
+
+standard_variables%cell_volume%name = 'cell_volume'
+standard_variables%cell_volume%units = 'm3'
 
 standard_variables%density%name = 'density'
 standard_variables%density%units = 'kg m-3'

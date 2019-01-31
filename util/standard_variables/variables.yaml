@@ -14,6 +14,10 @@ bulk:
     aggregate_variable: true
   - name: cell_thickness
     units: m
+  - name: cell_area
+    units: m2
+  - name: cell_volume
+    units: m3
   - name: density
     units: kg m-3
   - name: depth

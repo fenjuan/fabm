@@ -9,61 +9,54 @@ module fish_cohort
     
     !USES:
     use fabm_types
+    use fabm_particle
+    use fabm_expressions
+    use fabm_builtin_models
     implicit none
     private
     
     !PUBLIC DERIVED TYPE:
-    type,extends(type_base_model),public :: type_fish_cohort
-       ! variable identifiers---------------------------------------------------------------------------------------
-       type (type_surface_state_variable_id), allocatable             ::  id_N(:)
-       type (type_surface_state_variable_id), allocatable             ::  id_r_mass(:)
-       type (type_surface_state_variable_id), allocatable             ::  id_i_mass(:)
-                                                                      
-       type (type_surface_state_variable_id), allocatable             ::  id_N_mass(:)
-       type (type_surface_state_variable_id), allocatable             ::  id_P_mass(:)
-              
-       type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_g_mass_out(:)
-       type (type_horizontal_dependency_id), allocatable              ::  id_g_mass_in(:)
+    type,extends(type_particle_model),public :: type_fish_cohort
+       ! FABM VARIABLE IDENTIFIERS:
+       ! variable identifiers----------------------------------------------------------------------------------------------------------------------------------------------------
+       type (type_surface_state_variable_id),           allocatable, dimension(:)   ::  id_N,           id_r_mass,      id_i_mass,      id_N_mass,      id_P_mass
        
-       type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_dist_out(:,:)
-       type (type_horizontal_dependency_id), allocatable              ::  id_dist_in(:,:)
+       type (type_horizontal_diagnostic_variable_id),   allocatable, dimension(:)   ::  id_g_mass_out
+       type (type_horizontal_dependency_id),            allocatable, dimension(:)   ::  id_g_mass_in
        
-       type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_prey_loss_DW(:)
-       type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_prey_loss_P(:)
-       type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_prey_loss_N(:)
-       type (type_horizontal_diagnostic_variable_id), allocatable     ::  id_pas_rates(:,:)
+       type (type_horizontal_diagnostic_variable_id),   allocatable, dimension(:,:) ::  id_dist_out
+       type (type_horizontal_dependency_id),            allocatable, dimension(:,:) ::  id_dist_in
+       
+       type (type_model_id)                                                         ::  id_input
+       type (type_horizontal_diagnostic_variable_id),   allocatable, dimension(:,:) ::  id_PL_DW,       id_PL_P,        id_PL_N
+       type (type_horizontal_diagnostic_variable_id),   allocatable, dimension(:,:) ::  id_pas_rates
  
-       ! environmental dependencies and internal switches-----------------------------------------------------------
-       type (type_horizontal_dependency_id), allocatable     ::  id_ZD(:)
-       type (type_horizontal_dependency_id), allocatable     ::  id_ZN(:)
-       type (type_horizontal_dependency_id), allocatable     ::  id_ZP(:)
-       type (type_horizontal_dependency_id), allocatable     ::  id_dz(:)
-       type (type_horizontal_dependency_id), allocatable     ::  id_uTm(:)
+       ! environmental dependencies and internal switches------------------------------------------------------------------------------------------------------------------------
+       type (type_horizontal_dependency_id),            allocatable, dimension(:,:) ::  id_ZD,  id_ZN,  id_ZP
+       type (type_horizontal_dependency_id),            allocatable, dimension(:)   ::  id_dz,  id_uTm
        
-       type (type_global_dependency_id)                      ::  id_Day
+       type (type_global_dependency_id)                                             ::  id_Day
        
-       type (type_horizontal_diagnostic_variable_id)         ::  id_ix_repro_out
-       type (type_horizontal_dependency_id)                  ::  id_ix_repro_in
+       type (type_horizontal_diagnostic_variable_id)                                ::  id_ix_repro_out
+       type (type_horizontal_dependency_id)                                         ::  id_ix_repro_in
        
-       ! temprorary placeholder parameters--------------------------------------------------------------------------
-       real(rk)     ::  cht_m,          cht_Q10_z
-       real(rk)     ::  cht_PDZoo,      cht_NDZoo
-       ! model setup parameters-------------------------------------------------------------------------------------
-       integer      ::  cht_nC,         cht_nc_init,    cht_nlev
+       ! PARAMETER IDENTIFIERS:
+       ! model setup parameters--------------------------------------------------------------------------------------------------------------------------------------------------
+       integer      ::  cht_nC,         cht_nc_init,    cht_nlev,       cht_nprey
        real(rk)     ::  cht_ext
-       ! core model parameters--------------------------------------------------------------------------------------
+       ! core model parameters---------------------------------------------------------------------------------------------------------------------------------------------------
        real(rk)     ::  cht_q_J,        cht_q_A,        cht_theta_m_e,  cht_theta_a_s,  cht_theta_a_e,  cht_T_ref
        real(rk)     ::  cht_lambda_1,   cht_lambda_2,   cht_A_mx,       cht_W_opt,      cht_alpha,      cht_x_mu
        real(rk)     ::  cht_xi_1,       cht_xi_2,       cht_k_e,        cht_rho_1,      cht_rho_2,      cht_q_s
        real(rk)     ::  cht_s,          cht_mu_b,       cht_mu_0,       cht_phi,        cht_delta,      cht_eps
        real(rk)     ::  cht_beta,       cht_sigma,      cht_x_f,        cht_w_b,        cht_theta_m_s,  cht_k_r      
        real(rk)     ::  cht_R_day
-       ! stochiometric parameters-----------------------------------------------------------------------------------
+       ! stochiometric parameters------------------------------------------------------------------------------------------------------------------------------------------------
        real(rk)     ::  cht_PD_Ref,     cht_ND_Ref,     cht_P_Bone,     cht_D_Bone,     cht_Diss_Eges,  cht_DOMW
        real(rk)     ::  cht_Diss_Mort
        
-       contains                                                                                                  
-       ! model procedures-------------------------------------------------------------------------------------------
+    contains                                                                                                  
+       ! model procedures--------------------------------------------------------------------------------------------------------------------------------------------------------
        procedure :: initialize
        procedure :: do_surface
        
@@ -85,8 +78,8 @@ contains
     
     !LOCAL VARIABLES:
     real(rk), parameter :: d_per_s = 1.0_rk/86400.0_rk
-    integer             :: i_nc, i_z, i_pas
-    character(len=64)   :: index_nc, index_z, index_pas
+    integer             :: i_nc, i_z, i_pas, i_prey
+    character(len=64)   :: index_nc, index_z, index_pas, index_pvar, index_prey
     
     !REGISTER MODEL PARAMETERS:
     ! model setup parameters------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -94,6 +87,8 @@ contains
     call self%get_parameter(self%cht_nc_init   ,'initial_cohorts'        , '[-]'                , 'number of cohorts present at simulation start '           , default=1                                                         )
     call self%get_parameter(self%cht_ext       ,'extinction_abundance'   , '[L^-1]'             , 'extinction threshold abundance'                           , default=1E-15_rk    ,     scale_factor=L_pr_m3                    )
     call self%get_parameter(self%cht_nlev      ,'number_of_depth_lvls'   , '[-]'                , 'number of depth levels'                                                                                                       )
+    call self%get_parameter(self%cht_nprey     ,'number_of_prey'         , '[-]'                , 'number of zooplankton prey types'                         , default=0                                                         )
+
     ! core model parameters-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     call self%get_parameter(self%cht_q_J       ,'max_jv_con'             , '[-]'                , 'juvenile maximum condition'                               , default=0.74_rk                                                   )
     call self%get_parameter(self%cht_q_A       ,'max_ad_con'             , '[-]'                , 'adult maximum condition'                                  , default=1.37_rk                                                   )
@@ -136,34 +131,50 @@ contains
     call self%get_parameter(self%cht_DOMW      ,'DOMW_fish'              , '[-]'                , 'dissolved organic matter fraction from fish'              , default=0.5_rk                                                    )
     
     !STATE VARIABLE POINTERS:
-    ! setup depth-specific variables
-    allocate(self%id_ZD(self%cht_nlev))
-    allocate(self%id_ZN(self%cht_nlev))
-    allocate(self%id_ZP(self%cht_nlev))
+    ! setup depth- and prey-specific variables
+    allocate(self%id_ZD(self%cht_nprey,self%cht_nlev))
+    allocate(self%id_ZN(self%cht_nprey,self%cht_nlev))
+    allocate(self%id_ZP(self%cht_nprey,self%cht_nlev))
+    allocate(self%id_PL_DW(self%cht_nprey,self%cht_nlev))
+    allocate(self%id_PL_P(self%cht_nprey,self%cht_nlev))
+    allocate(self%id_PL_N(self%cht_nprey,self%cht_nlev))
+
     allocate(self%id_dz(self%cht_nlev))
     allocate(self%id_uTm(self%cht_nlev))
-    allocate(self%id_pas_rates(self%cht_nlev, 9))
-    allocate(self%id_prey_loss_DW(self%cht_nlev))
-    allocate(self%id_prey_loss_P(self%cht_nlev))
-    allocate(self%id_prey_loss_N(self%cht_nlev))
     
+    allocate(self%id_pas_rates(self%cht_nlev, 9))
+    
+    
+    call self%register_model_dependency(self%id_input,'get_vars')
     do i_z=1,self%cht_nlev
         write(index_z,'(i0)') i_z
-        call self%register_horizontal_dependency(self%id_ZD(i_z),'ZD_at_z'//trim(index_z),'gDW m^-3','zooplankton dry weight concentration at depth interval '//trim(index_z))
-        call self%register_horizontal_dependency(self%id_ZN(i_z),'ZN_at_z'//trim(index_z),'gN m^-3','zooplankton nitrogen concentration at depth interval '//trim(index_z))
-        call self%register_horizontal_dependency(self%id_ZP(i_z),'ZP_at_z'//trim(index_z),'gP m^-3','zooplankton phosphorous concentration at depth interval '//trim(index_z))
-        
+         do i_prey=1,self%cht_nprey
+            write(index_prey,'(i0)') i_prey
+            call self%register_horizontal_dependency(self%id_ZD(i_prey,i_z),'ZD'//trim(index_prey)//'_at_z'//trim(index_z),'gDW m^-3','zooplankton '//trim(index_prey)//' dry weight at layer '//trim(index_z))
+            call self%register_horizontal_dependency(self%id_ZN(i_prey,i_z),'ZN'//trim(index_prey)//'_at_z'//trim(index_z),'gN m^-3','zooplankton '//trim(index_prey)//' nitrogen at layer '//trim(index_z))
+            call self%register_horizontal_dependency(self%id_ZP(i_prey,i_z),'ZP'//trim(index_prey)//'_at_z'//trim(index_z),'gP m^-3','zooplankton '//trim(index_prey)//' phosphorous at layer '//trim(index_z))
+            
+            !clunky: change at first chance!
+            write(index_pvar,'(i0)') (i_prey-1)*3+1
+            call self%request_coupling_to_model(self%id_ZD(i_prey,i_z),self%id_input,'pvar'//trim(index_pvar)//'_at_z'//trim(index_z))
+            write(index_pvar,'(i0)') (i_prey-1)*3+2
+            call self%request_coupling_to_model(self%id_ZN(i_prey,i_z),self%id_input,'pvar'//trim(index_pvar)//'_at_z'//trim(index_z))
+            write(index_pvar,'(i0)') (i_prey-1)*3+3
+            call self%request_coupling_to_model(self%id_ZP(i_prey,i_z),self%id_input,'pvar'//trim(index_pvar)//'_at_z'//trim(index_z))
+            
+            call self%register_diagnostic_variable(self%id_PL_DW(i_prey,i_z),'PL_DW_z'//trim(index_z),'-','prey DW loss at layer '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
+            call self%register_diagnostic_variable(self%id_PL_P(i_prey,i_z),'PL_P_z'//trim(index_z),'-','prey P loss at layer '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
+            call self%register_diagnostic_variable(self%id_PL_N(i_prey,i_z),'PL_N_z'//trim(index_z),'-','prey N loss at layer '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
+        end do
+        do i_pas=1,9
+            write(index_pas,'(i0)') i_pas
+            call self%register_diagnostic_variable(self%id_pas_rates(i_z,i_pas),'PR'//trim(index_pas)//'_z'//trim(index_z),'-','rate of change of passive variable '//trim(index_pas)//' at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
+        end do
         call self%register_horizontal_dependency(self%id_dz(i_z),'dz_at_z'//trim(index_z),'m','layer depth at depth interval '//trim(index_z))
         call self%register_horizontal_dependency(self%id_uTm(i_z),'uTm_at_z'//trim(index_z),'*C','temperature at depth interval '//trim(index_z))
         
-        call self%register_diagnostic_variable(self%id_prey_loss_DW(i_z),'prey_lossDW_z'//trim(index_z),'-','prey DW loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
-        call self%register_diagnostic_variable(self%id_prey_loss_P(i_z),'prey_lossP_z'//trim(index_z),'-','prey P loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
-        call self%register_diagnostic_variable(self%id_prey_loss_N(i_z),'prey_lossN_z'//trim(index_z),'-','prey N loss rate at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
-        
-        do i_pas=1,9
-            write(index_pas,'(i0)') i_pas
-            call self%register_diagnostic_variable(self%id_pas_rates(i_z,i_pas),'pas_rate_var'//trim(index_pas)//'_z'//trim(index_z),'-','rate of change of passive variable '//trim(index_pas)//' at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
-        end do
+        call self%request_coupling_to_model(self%id_dz(i_z),self%id_input,'dz_z'//trim(index_z))
+        call self%request_coupling_to_model(self%id_uTm(i_z),self%id_input,'uTm_z'//trim(index_z))
     end do
     
     ! set up cohort-specific variables
@@ -219,12 +230,12 @@ contains
     ! state variables & diagnostics --------------------------------------------------------------------------------
     real(rk), dimension(self%cht_nC+self%cht_nc_init)   :: N,           r_mass,     i_mass,     N_mass,     P_mass
     real(rk), dimension(self%cht_nC+self%cht_nc_init)   :: g_mass
-    real(rk), dimension(self%cht_nlev)                  :: ZD,          ZN,         ZP
+    real(rk), dimension(self%cht_nprey,self%cht_nlev)   :: ZD,          ZN,         ZP
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
         self%cht_nlev)                                  :: dist
     ! derivatives --------------------------------------------------------------------------------------------------
     real(rk), dimension(self%cht_nC+self%cht_nc_init)   :: d_N,         d_rmass,    d_imass,    d_Nmass,    d_Pmass
-    real(rk), dimension(self%cht_nlev)                  :: d_ZD,        d_ZN,       d_ZP
+    real(rk), dimension(self%cht_nprey,self%cht_nlev)   :: d_ZD,        d_ZN,       d_ZP
     ! local cohort vector variables --------------------------------------------------------------------------------
     real(rk), dimension(self%cht_nC+self%cht_nc_init)   :: lengths,     st_mass,    H,          A_z,        mu_size
     real(rk), dimension(self%cht_nC+self%cht_nc_init)   :: Q10_m,       Q10_a      
@@ -238,20 +249,24 @@ contains
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
         self%cht_nlev)                                  :: H_M,         A_z_M,      E_m_P,      I_P,        p_i
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
-        self%cht_nlev)                                  :: I_r,         eta_z,      eta,        mu_c_M,     E_m_M
+        self%cht_nlev)                                  :: I_r,         eta,        mu_c_M,     E_m_M
+    real(rk), dimension(self%cht_nC+self%cht_nc_init, &
+        self%cht_nprey, self%cht_nlev)                  :: eta_z      
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
         self%cht_nC+self%cht_nc_init, self%cht_nlev)    :: eta_c,       A_c_M
     ! local cohort single within-loop variables --------------------------------------------------------------------
     real(rk)                                            :: F_tot
     ! local stoichiometric vector variables-------------------------------------------------------------------------
-    real(rk), dimension(self%cht_nlev)                  :: ke_P_zoo,    ke_N_zoo,   NH4_tot,    PO4_tot,    DW_tot
+    real(rk), dimension(self%cht_nlev)                  :: NH4_tot,    PO4_tot,    DW_tot
     real(rk), dimension(self%cht_nlev)                  :: DW_POM,      DW_DOM,     OP_tot,     OP_POM,     OP_DOM
-    real(rk), dimension(self%cht_nlev)                  :: ON_tot,      ON_POM,     ON_DOM,     PDZoo,      NDZoo
-    real(rk), dimension(self%cht_nlev)                  :: BOT_FEED
+    real(rk), dimension(self%cht_nlev)                  :: ON_tot,      ON_POM,     ON_DOM,     BOT_FEED
     real(rk), dimension(self%cht_nC+self%cht_nc_init)   :: ke_P_pis,    ke_N_pis,   PD,         ND,         E_m_corr
     ! local stoichiometric matrix variables ------------------------------------------------------------------------
+    real(rk), dimension(self%cht_nprey, self%cht_nlev)  :: PDZoo,       NDZoo,      ke_P_zoo,   ke_N_zoo
+        real(rk), dimension(self%cht_nC+self%cht_nc_init, &
+        self%cht_nprey, self%cht_nlev)                  :: I_r_zoo,     I_r_N_zoo,  I_r_P_zoo
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
-        self%cht_nlev)                                  :: I_r_zoo,     I_r_N_zoo,  N_ass_zoo,  N_ass,      I_r_P_zoo
+        self%cht_nlev)                                  :: N_ass_zoo,  N_ass
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
         self%cht_nlev)                                  :: P_ass_zoo,   P_ass,      P_exc,      N_exc,      D_ege
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
@@ -289,9 +304,11 @@ contains
         !===========================================================================================================
         ! 1.2 get food concentrations & calculate food nutrient ratios
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-        _GET_HORIZONTAL_(self%id_ZD,ZD)                                                                             ! get zooplankton (food) DW concentrations
-        _GET_HORIZONTAL_(self%id_ZN,ZN)                                                                             ! get zooplankton (food) N concentrations
-        _GET_HORIZONTAL_(self%id_ZP,ZP)                                                                             ! get zooplankton (food) P concentrations
+        do i=1,self%cht_nprey
+            _GET_HORIZONTAL_(self%id_ZD(i,:),ZD(i,:))                                                                             ! get zooplankton (food) DW concentrations
+            _GET_HORIZONTAL_(self%id_ZN(i,:),ZN(i,:))                                                                             ! get zooplankton (food) N concentrations
+            _GET_HORIZONTAL_(self%id_ZP(i,:),ZP(i,:))                                                                             ! get zooplankton (food) P concentrations
+        end do
         
         where (ZD>0)
             PDZoo = ZP/ZD                                                                                           ! depth-specific zooplankton PW:DW ratio
@@ -405,10 +422,10 @@ contains
         !===========================================================================================================
         ! 2.6  determine spatial distributions & calculate depth-specific rates
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-        eta_z = A_z_M*spread(ZD, DIM=1, NCOPIES=nC_fin)                                                             ! depth-specific encounter rates with zooplankton prey (dimensions: nC_fin x nlev)
+        eta_z = spread(A_z_M, DIM=2, NCOPIES=self%cht_nprey)*spread(ZD, DIM=1, NCOPIES=nC_fin)                      ! depth-specific encounter rates with zooplankton prey (dimensions: nC_fin x nlev)
         eta_c = A_c_M*spread(dist*spread((r_mass+i_mass)*N, DIM=2, NCOPIES=self%cht_nlev)/ &
             spread(dz, DIM=1, NCOPIES=nC_fin), DIM=2, NCOPIES=nC_fin)   ! depth-specific encounter rates with fish prey (dimensions: nC_fin x nC_fin x nlev)
-        eta = eta_z+sum(eta_c,1)                                                                                    ! depth-specific total encounter rates with prey (dimensions: nC_fin x nlev)
+        eta = sum(eta_z,2)+sum(eta_c,1)                                                                                    ! depth-specific total encounter rates with prey (dimensions: nC_fin x nlev)
         
         I_P = eta/(1.0_rk+H_M*eta)                                                                                  ! layer-specific potential ingestion rates from feeding on zooplankton, corrected with layer depth (dimensions: nC_fin x nlev)
         where (spread(sum(I_P,2), DIM=2, NCOPIES=self%cht_nlev)>0) ! avoid creating NAN's where cohort are empty or there is no food in the watercolumn
@@ -441,7 +458,7 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         E_a = self%cht_k_e*Ing                                                                                      ! calculate assimilation
         E_g = E_a-E_m_corr                                                                                          ! final growth (or degrowth)
-        E_g = max(E_g,-E_m_corr/4.0_rk)                                                                                                                  ! test effect of depressed starvation metabolism
+        E_g = max(E_g,-E_m_corr/5.0_rk)                                                                                                                  ! test effect of depressed starvation metabolism
         where (r_mass<self%cht_q_s*i_mass) ! find which cohorts are starving
             mu_s = (self%cht_s*(self%cht_q_s*i_mass/r_mass-1.0_rk))                                                 ! calculate starvation mortality
         elsewhere
@@ -486,26 +503,30 @@ contains
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     ! 3. calculate and update zooplankton losses
     !===============================================================================================================
-        d_ZD = - sum(spread(N,DIM=2, NCOPIES=self%cht_nlev)*p_i*eta_z/(1.0_rk+H_M*eta), 1)/dz                       ! set zooplankton DW derivative
+        d_ZD = - sum(spread(spread(N,DIM=2, NCOPIES=self%cht_nlev)*p_i,DIM=2,NCOPIES=self%cht_nprey)*eta_z &
+            /(1.0_rk+spread(H_M*eta,DIM=2,NCOPIES=self%cht_nprey)),1)/spread(dz,DIM=1,NCOPIES=self%cht_nprey)       ! set zooplankton DW derivative
         d_ZP = d_ZD*PDZoo                                                                                           ! set zooplankton PW derivative
         d_ZN = d_ZD*NDZoo                                                                                           ! set zooplankton NW derivative
         
-        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_prey_loss_DW,d_ZD)                                                      ! update zooplankton DW loss rate
-        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_prey_loss_P,d_ZP)                                                       ! update zooplankton P loss rate
-        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_prey_loss_N,d_ZN)                                                       ! update zooplankton N loss rate
+        do i=1,self%cht_nprey
+            _SET_HORIZONTAL_DIAGNOSTIC_(self%id_PL_DW(i,:),d_ZD(i,:))                                               ! update zooplankton DW loss rate
+            _SET_HORIZONTAL_DIAGNOSTIC_(self%id_PL_P(i,:),d_ZP(i,:))                                                ! update zooplankton P loss rate
+            _SET_HORIZONTAL_DIAGNOSTIC_(self%id_PL_N(i,:),d_ZN(i,:))                                                ! update zooplankton N loss rate
+        end do
     !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     ! 4. do stochiometry & and update external abiotic variables
     !===============================================================================================================
-        I_r_zoo = (eta_z/(1.0_rk+H_M*eta))*p_i                                                                      ! calculate depth-spcific total zooplankton ingestion rates (dimensions: nC_fin x nlev)
+        I_r_zoo = (eta_z/spread((1.0_rk+H_M*eta),DIM=2,NCOPIES=self%cht_nprey)) &
+            *spread(p_i,DIM=2,NCOPIES=self%cht_nprey)                                                               ! calculate depth-spcific total zooplankton ingestion rates (dimensions: nC_fin x nlev)
         I_r_pis = (eta_c/(1.0_rk+spread(H_M*eta,DIM=1, NCOPIES=nC_fin)))*spread(p_i, DIM=1, NCOPIES=nC_fin)         ! calculate depth- and cohort-spcefic piscivorous ingestion rates (dimensions: nC_fin x nC_fin x nlev)
         !===========================================================================================================
         ! 4.1 assimilation
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
             ! 4.1.1 phosphorous
             !-------------------------------------------------------------------------------------------------------
-            ke_P_zoo = min(1.0_rk,self%cht_PD_Ref/PDZoo * self%cht_k_e)                                             ! calculate P assimilation efficiencies of zooplanktivory (dimensions: nlev)
-            I_r_P_zoo = spread(PDZoo, DIM=1, NCOPIES=nC_fin) * I_r_zoo                                              ! calculate P ingestion rates from zooplanktivory (dimensions: nC_fin x nlev)
-            P_ass_zoo = spread(ke_P_zoo, DIM=1, NCOPIES=nC_fin) * I_r_P_zoo                                         ! calculate P assimilation rates from zooplanktivory (dimensions: nC_fin x nlev)
+            ke_P_zoo = min(1.0_rk,self%cht_PD_Ref/PDZoo * self%cht_k_e)                                             ! calculate P assimilation efficiencies of zooplanktivory (dimensions: nprey x nlev)
+            I_r_P_zoo = spread(PDZoo, DIM=1, NCOPIES=nC_fin) * I_r_zoo                                              ! calculate P ingestion rates from zooplanktivory (dimensions: nC_fin x nprey x nlev)
+            P_ass_zoo = sum(spread(ke_P_zoo, DIM=1, NCOPIES=nC_fin) * I_r_P_zoo,2)                                  ! calculate P assimilation rates from zooplanktivory (dimensions: nC_fin x nlev)
             
             ke_P_pis = min(1.0_rk,self%cht_PD_Ref/PD * self%cht_k_e)                                                ! calculate P assimilation efficiencies of piscivory (dimensions: nC_fin)
             I_r_P_pis = spread(spread(PD, DIM=2, NCOPIES=nC_fin), DIM=3, NCOPIES=self%cht_nlev) * I_r_pis           ! calculate P ingestion rates from piscivory (dimensions: nC_fin x nC_fin x nlev)
@@ -517,7 +538,7 @@ contains
             !-------------------------------------------------------------------------------------------------------
             ke_N_zoo = min(1.0_rk,self%cht_ND_Ref/NDZoo * self%cht_k_e)                                             ! calculate N assimilation efficiencies of zooplanktivory (dimensions: nlev)
             I_r_N_zoo = spread(NDZoo, DIM=1, NCOPIES=nC_fin) * I_r_zoo                                              ! calculate P ingestion rates from zooplanktivory (dimensions: nC_fin x nlev)
-            N_ass_zoo = spread(ke_N_zoo, DIM=1, NCOPIES=nC_fin) * I_r_N_zoo                                         ! calculate N assimilation rates from zooplanktivory (dimensions: nC_fin x nlev)
+            N_ass_zoo = sum(spread(ke_N_zoo, DIM=1, NCOPIES=nC_fin) * I_r_N_zoo,2)                                  ! calculate N assimilation rates from zooplanktivory (dimensions: nC_fin x nlev)
             
             ke_N_pis = min(1.0_rk,self%cht_ND_Ref/ND * self%cht_k_e)                                                ! calculate N assimilation efficiencies of piscivory (dimensions: nC_fin)
             I_r_N_pis = spread(spread(ND, DIM=2, NCOPIES=nC_fin), DIM=3, NCOPIES=self%cht_nlev) * I_r_pis           ! calculate P ingestion rates from piscivory (dimensions: nC_fin x nC_fin x nlev)
@@ -543,11 +564,11 @@ contains
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
             ! 4.3.2 phosphorous
             !-------------------------------------------------------------------------------------------------------
-            P_ege = I_r_P_zoo + sum(I_r_P_pis,1) - P_ass                                                            ! calculate egested P (dimensions: nC_fin x nlev)
+            P_ege = sum(I_r_P_zoo,2) + sum(I_r_P_pis,1) - P_ass                                                     ! calculate egested P (dimensions: nC_fin x nlev)
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
             ! 4.3.3 nitrogen
             !-------------------------------------------------------------------------------------------------------
-            N_ege = I_r_N_zoo + sum(I_r_N_pis,1) - N_ass                                                            ! calculate egested P (dimensions: nC_fin x nlev)
+            N_ege = sum(I_r_N_zoo,2) + sum(I_r_N_pis,1) - N_ass                                                     ! calculate egested P (dimensions: nC_fin x nlev)
         !===========================================================================================================
         ! 4.4 set nutrient ODEs for fish
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
