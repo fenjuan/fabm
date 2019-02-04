@@ -33,7 +33,7 @@ module fish_cohort
  
        ! environmental dependencies and internal switches------------------------------------------------------------------------------------------------------------------------
        type (type_horizontal_dependency_id),            allocatable, dimension(:,:) ::  id_ZD,  id_ZN,  id_ZP
-       type (type_horizontal_dependency_id),            allocatable, dimension(:)   ::  id_dz,  id_uTm
+       type (type_horizontal_dependency_id),            allocatable, dimension(:)   ::  id_dz,  id_uTm, id_Af, id_Vc
        
        type (type_global_dependency_id)                                             ::  id_Day
        
@@ -140,6 +140,8 @@ contains
     allocate(self%id_PL_N(self%cht_nprey,self%cht_nlev))
 
     allocate(self%id_dz(self%cht_nlev))
+    allocate(self%id_Af(self%cht_nlev))
+    allocate(self%id_Vc(self%cht_nlev))
     allocate(self%id_uTm(self%cht_nlev))
     
     allocate(self%id_pas_rates(self%cht_nlev, 9))
@@ -171,9 +173,13 @@ contains
             call self%register_diagnostic_variable(self%id_pas_rates(i_z,i_pas),'PR'//trim(index_pas)//'_z'//trim(index_z),'-','rate of change of passive variable '//trim(index_pas)//' at depth '//trim(index_z),act_as_state_variable=.true.,domain=domain_surface,output=output_none,missing_value=0.0_rk)
         end do
         call self%register_horizontal_dependency(self%id_dz(i_z),'dz_at_z'//trim(index_z),'m','layer depth at depth interval '//trim(index_z))
+        call self%register_horizontal_dependency(self%id_Af(i_z),'Af_at_z'//trim(index_z),'m','layer area at depth interval '//trim(index_z))
+        call self%register_horizontal_dependency(self%id_Vc(i_z),'Vc_at_z'//trim(index_z),'m','layer volume at depth interval '//trim(index_z))
         call self%register_horizontal_dependency(self%id_uTm(i_z),'uTm_at_z'//trim(index_z),'*C','temperature at depth interval '//trim(index_z))
         
         call self%request_coupling_to_model(self%id_dz(i_z),self%id_input,'dz_z'//trim(index_z))
+        call self%request_coupling_to_model(self%id_Af(i_z),self%id_input,'Af_z'//trim(index_z))
+        call self%request_coupling_to_model(self%id_Vc(i_z),self%id_input,'Vc_z'//trim(index_z))
         call self%request_coupling_to_model(self%id_uTm(i_z),self%id_input,'uTm_z'//trim(index_z))
     end do
     
@@ -214,7 +220,6 @@ contains
     call self%register_diagnostic_variable(self%id_ix_repro_out,'repro_switch','-','reproductive switch',act_as_state_variable=.true.,domain=domain_surface,output=output_none)
     call self%register_horizontal_dependency(self%id_ix_repro_in,'repro_switch','-','reproductive switch')
     
-    return
     end subroutine initialize
     
 !xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -278,7 +283,7 @@ contains
     real(rk), dimension(self%cht_nC+self%cht_nc_init, &
         self%cht_nC+self%cht_nc_init, self%cht_nlev)    :: I_r_pis,     I_r_N_pis,  N_ass_pis,  I_r_P_pis,  P_ass_pis
     ! carriers for environment dependencies and logical switches ---------------------------------------------------
-    real(rk), dimension(self%cht_nlev)                  :: dz,          uTm
+    real(rk), dimension(self%cht_nlev)                  :: dz,          Af,         Vc,         uTm
     real(rk)                                            :: Day
     integer                                             :: i,           j,          ix_repro,   nC_fin
     integer                                             :: tcheck=0
@@ -322,9 +327,14 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         _GET_GLOBAL_(self%id_Day,Day)                                                                               ! get current julian day
         _GET_HORIZONTAL_(self%id_dz,dz)                                                                             ! get layer depths
+        _GET_HORIZONTAL_(self%id_Af,Af)                                                                             ! get layer depths
+        _GET_HORIZONTAL_(self%id_Vc,Vc)                                                                             ! get layer depths
         _GET_HORIZONTAL_(self%id_uTm,uTm)                                                                           ! get layer temperatures
         _GET_HORIZONTAL_(self%id_ix_repro_in,ix_repro)                                                              ! get reproductive switch status
 
+        !Vc=Vc/sum(Vc)
+        !Af=Af/sum(Af)
+        
         do i=1,nC_fin
             _GET_HORIZONTAL_(self%id_dist_in(i,:),dist(i,:))                                                        ! get current fidh distributions (dimensions: nC_fin x nlev)
         end do
@@ -424,22 +434,22 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         eta_z = spread(A_z_M, DIM=2, NCOPIES=self%cht_nprey)*spread(ZD, DIM=1, NCOPIES=nC_fin)                      ! depth-specific encounter rates with zooplankton prey (dimensions: nC_fin x nlev)
         eta_c = A_c_M*spread(dist*spread((r_mass+i_mass)*N, DIM=2, NCOPIES=self%cht_nlev)/ &
-            spread(dz, DIM=1, NCOPIES=nC_fin), DIM=2, NCOPIES=nC_fin)   ! depth-specific encounter rates with fish prey (dimensions: nC_fin x nC_fin x nlev)
+            spread(Vc, DIM=1, NCOPIES=nC_fin), DIM=2, NCOPIES=nC_fin)   ! depth-specific encounter rates with fish prey (dimensions: nC_fin x nC_fin x nlev)
         eta = sum(eta_z,2)+sum(eta_c,1)                                                                                    ! depth-specific total encounter rates with prey (dimensions: nC_fin x nlev)
         
         I_P = eta/(1.0_rk+H_M*eta)                                                                                  ! layer-specific potential ingestion rates from feeding on zooplankton, corrected with layer depth (dimensions: nC_fin x nlev)
         where (spread(sum(I_P,2), DIM=2, NCOPIES=self%cht_nlev)>0) ! avoid creating NAN's where cohort are empty or there is no food in the watercolumn
-            p_i = (I_P*spread(dz, DIM=1, NCOPIES=nC_fin))/spread(sum(I_P*spread(dz, DIM=1, NCOPIES=nC_fin),2), &
+            p_i = (I_P*spread(Vc, DIM=1, NCOPIES=nC_fin))/spread(sum(I_P*spread(Vc, DIM=1, NCOPIES=nC_fin),2), &
                 DIM=2, NCOPIES=self%cht_nlev)                                                                       ! calculate distribution weights (dimensions: nC_fin x nlev)
         elsewhere
-            p_i = spread(dz/sum(dz), DIM=1, NCOPIES=nC_fin)                                                         ! in case cohort is not empty, but ingestion is zero everywhere, fish distribute evenly
+            p_i = spread(Vc/sum(Vc), DIM=1, NCOPIES=nC_fin)                                                         ! in case cohort is not empty, but ingestion is zero everywhere, fish distribute evenly
         endwhere
                
         I_r= p_i*I_P                                                                                                ! depth-specific realized ingestion rates (dimensions: nC_fin x nlev)
         Ing = sum(I_r, 2)                                                                                           ! total realized ingestion rates (dimensions: nC_fin)
         E_m_M = E_m_P*p_i                                                                                           ! depth-specific realized metabolism (dimensions: nC_fi)
         
-        mu_c_M = sum(A_c_M*spread(dist*(spread(N, DIM=2, NCOPIES=self%cht_nlev)/spread(dz, DIM=1, NCOPIES=nC_fin)) &
+        mu_c_M = sum(A_c_M*spread(dist*(spread(N, DIM=2, NCOPIES=self%cht_nlev)/spread(Vc, DIM=1, NCOPIES=nC_fin)) &
             /(1.0_rk+H_M*eta), DIM=1, NCOPIES=nC_fin), 2)*p_i                                                       ! depth-specific mortality from piscivory (dimensions: nC_fin x nlev)
         mu_c = sum(mu_c_M, 2)                                                                                       ! total piscivorous mortality (dimensions: nC_fin)
         !===========================================================================================================
@@ -496,7 +506,7 @@ contains
         !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
         _SET_SURFACE_ODE_(self%id_N(year+self%cht_nc_init),F_tot)                                                   ! start new cohort with the produced offspring
         
-        p_i(year+self%cht_nc_init,:)=dz/sum(dz)                                                                     ! new cohorts are initially evenly distibuted
+        p_i(year+self%cht_nc_init,:)=Vc/sum(Vc)                                                                     ! new cohorts are initially evenly distibuted
         do i=1,nC_fin
             _SET_HORIZONTAL_DIAGNOSTIC_(self%id_dist_out(i,:),p_i(i,:))                                             ! update fish distributions
         end do
@@ -504,7 +514,7 @@ contains
     ! 3. calculate and update zooplankton losses
     !===============================================================================================================
         d_ZD = - sum(spread(spread(N,DIM=2, NCOPIES=self%cht_nlev)*p_i,DIM=2,NCOPIES=self%cht_nprey)*eta_z &
-            /(1.0_rk+spread(H_M*eta,DIM=2,NCOPIES=self%cht_nprey)),1)/spread(dz,DIM=1,NCOPIES=self%cht_nprey)       ! set zooplankton DW derivative
+            /(1.0_rk+spread(H_M*eta,DIM=2,NCOPIES=self%cht_nprey)),1)/spread(Vc,DIM=1,NCOPIES=self%cht_nprey)       ! set zooplankton DW derivative
         d_ZP = d_ZD*PDZoo                                                                                           ! set zooplankton PW derivative
         d_ZN = d_ZD*NDZoo                                                                                           ! set zooplankton NW derivative
         
@@ -586,7 +596,7 @@ contains
             NH4_mor = spread(self%cht_Diss_Mort * (N_mass-self%cht_D_Bone*self%cht_ND_Ref*st_mass)*mu, &
                 DIM=2, NCOPIES=self%cht_nlev)                                                                       ! calculate per capita NH4 flux from mortality - bone mass calculated from standard mass, since can't be starved (dimensions: nC_fin x nlev)
             
-            NH4_tot = sum((N_exc + NH4_ege + NH4_mor)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i,1)                ! calculate total population NH4 flux to the water column (dimensions: nlev)                                                - final export!
+            NH4_tot = sum((N_exc + NH4_ege + NH4_mor)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i,1)/Vc                ! calculate total population NH4 flux to the water column (dimensions: nlev)                                                - final export!
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
             ! 4.5.2 PO4
             !-------------------------------------------------------------------------------------------------------
@@ -594,13 +604,13 @@ contains
             PO4_mor = spread(self%cht_Diss_Mort * (P_mass-self%cht_P_Bone*self%cht_PD_Ref*st_mass)*mu, &
                 DIM=2, NCOPIES=self%cht_nlev)                                                                       ! calculate per capita PO4 flux from mortality - bone mass calculated from standard mass, since can't be starved (dimensions: nC_fin x nlev)
             
-            PO4_tot = sum((P_exc + PO4_ege + PO4_mor)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i,1)                ! calculate total population PO4 flux to the water column (dimensions: nlev)                                                - final export!
+            PO4_tot = sum((P_exc + PO4_ege + PO4_mor)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i,1)/Vc                ! calculate total population PO4 flux to the water column (dimensions: nlev)                                                - final export!
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
             ! 4.5.3 organic matter DW
             !-------------------------------------------------------------------------------------------------------
             DW_mor = spread(((r_mass+i_mass)-self%cht_D_Bone*st_mass)*mu, DIM=2, NCOPIES=self%cht_nlev)             ! calculate per capita DW flux from mortality - bone mass calculated from standard mass, since can't be starved (dimensions: nC_fin x nlev)
             
-            DW_tot = sum((DW_mor + D_ege)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i, 1)                           ! calculate total DW flux to the water column (dimensions: nlev)
+            DW_tot = sum((DW_mor + D_ege)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i, 1)/Vc                           ! calculate total DW flux to the water column (dimensions: nlev)
             DW_POM = DW_tot*(1.0_rk-self%cht_DOMW)                                                                  ! particulate fraction of DW_tot (dimensions: nlev)                                                                         - final export!
             DW_DOM = DW_tot*self%cht_DOMW                                                                           ! dissolved fraction of DW_tot (dimensions: nlev)                                                                           - final export!
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -610,7 +620,7 @@ contains
                 DIM=2, NCOPIES=self%cht_nlev)                                                                       ! calculate per capita organic P flux from mortality - bone mass calculated from standard mass, since can't be starved (dimensions: nC_fin x nlev)
             OP_ege = P_ege*(1.0_rk-self%cht_Diss_Eges)                                                              ! calculate organic P flux from egestion (dimensions: nC_fin x nlev)
             
-            OP_tot = sum((OP_mor + OP_ege)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i, 1)                          ! calculate total organic P flux to the water column (dimensions: nlev)
+            OP_tot = sum((OP_mor + OP_ege)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i, 1)/Vc                          ! calculate total organic P flux to the water column (dimensions: nlev)
             OP_POM = OP_tot*(1.0_rk-self%cht_DOMW)                                                                  ! particulate fraction of OP_tot (dimensions: nlev)                                                                         - final export!
             OP_DOM = OP_tot*self%cht_DOMW                                                                           ! dissolved fraction of OP_tot (dimensions: nlev)                                                                           - final export!
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -620,7 +630,7 @@ contains
                 DIM=2, NCOPIES=self%cht_nlev)                                                                       ! calculate per capita organic N flux from mortality - bone mass calculated from standard mass, since can't be starved (dimensions: nC_fin x nlev)
             ON_ege = N_ege*(1.0_rk-self%cht_Diss_Eges)                                                              ! calculate organic N flux from egestion (dimensions: nC_fin x nlev)
             
-            ON_tot = sum((ON_mor + ON_ege)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i, 1)                          ! calculate total organic N flux to the water column (dimensions: nlev)
+            ON_tot = sum((ON_mor + ON_ege)*spread(N, DIM=2, NCOPIES=self%cht_nlev)*p_i, 1)/Vc                          ! calculate total organic N flux to the water column (dimensions: nlev)
             ON_POM = ON_tot*(1.0_rk-self%cht_DOMW)                                                                  ! particulate fraction of ON_tot (dimensions: nlev)                                                                         - final export!
             ON_DOM = ON_tot*self%cht_DOMW                                                                           ! dissolved fraction of ON_tot (dimensions: nlev)                                                                           - final export!
             !:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::

@@ -19,6 +19,8 @@ module fish_interface
        type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_pvar(:,:)                          ! for saving local variable values, holds a number of local values equal to number of depth cells x variables
        type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_thickness(:)                       ! for saving local cell thicknesses, holds a number of local values equal to number of depth cells
        type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_temperature(:)                     ! for saving local cell thicknesses, holds a number of local values equal to number of depth cells
+       type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_area(:)                            ! for saving local cell thicknesses, holds a number of local values equal to number of depth cells
+       type (type_horizontal_diagnostic_variable_id), allocatable    :: id_local_volume(:)                          ! for saving local cell thicknesses, holds a number of local values equal to number of depth cells
        
        type (type_state_variable_id), allocatable                    :: id_targets_in(:)                            ! the target variables (e.g. zooplankton,light,oxygen) (NOTE: NOT the same as in fish_rate_distributor!)
        type (type_dependency_id)                                     :: id_thickness                                ! cell thickness; this will be needed for calculating/allocating fish predation
@@ -81,12 +83,19 @@ contains
         ! this should be allocated:
         allocate(self%id_local_pvar(self%nlev,self%nvars))
         allocate(self%id_local_thickness(self%nlev))
+        allocate(self%id_local_area(self%nlev))
+        allocate(self%id_local_volume(self%nlev))
         allocate(self%id_local_temperature(self%nlev))
         allocate(self%id_targets_in(self%nvars))
         do i_z=1,self%nlev
             write(index_z,'(i0)') i_z
             call self%register_diagnostic_variable(self%id_local_thickness(i_z),'dz_z'//trim(index_z),'','local cell thickness at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
                           act_as_state_variable=.true.,domain=domain_surface,output=output_none,source=source_do_column,missing_value=0.0_rk)                                        ! current cell thickness
+            call self%register_diagnostic_variable(self%id_local_area(i_z),'Af_z'//trim(index_z),'','local cell area at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
+                          act_as_state_variable=.true.,domain=domain_surface,output=output_none,source=source_do_column,missing_value=0.0_rk)                                        ! current cell thickness
+            call self%register_diagnostic_variable(self%id_local_volume(i_z),'Vc_z'//trim(index_z),'','local cell volume at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
+                          act_as_state_variable=.true.,domain=domain_surface,output=output_none,source=source_do_column,missing_value=0.0_rk)                                        ! current cell thickness
+            
             call self%register_diagnostic_variable(self%id_local_temperature(i_z),'uTm_z'//trim(index_z),'','local cell temperature at depth interval '//trim(index_z), & ! not sure about act_as_state_variable
                           act_as_state_variable=.true.,domain=domain_surface,output=output_none,source=source_do_column,missing_value=0.0_rk)                                        ! current cell thickness
             do i_v=1,self%nvars
@@ -106,7 +115,7 @@ contains
         class (type_get_pvar),intent(in) :: self
         _DECLARE_ARGUMENTS_VERTICAL_
 
-        real(rk)                                    :: CV, CA
+        real(rk)                                    :: Vc, Af
         real(rk), dimension(self%nlev)              :: thickness, uTm
         real(rk), dimension(self%nlev,self%nvars)   :: locals
         integer  :: i_z, i_v
@@ -121,12 +130,16 @@ contains
             end do
             _GET_(self%id_thickness,thickness(i_z))
             _GET_(self%id_uTm,uTm(i_z))
-            _GET_(self%id_cell_volume,CV)
-            _GET_(self%id_cell_area,CA)
-            write (*,*) CA
+            _GET_(self%id_volume,Vc)
+            _GET_(self%id_area,Af)
+!            write (*,*) CA
         _VERTICAL_LOOP_END_
-        stop
+!        stop
+        ! calculate (relative) benthic area?
+        ! calculate relative volume?
         _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_thickness,thickness)
+        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_area,Af)
+        _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_volume,Vc)
         _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_temperature,uTm)
         do i_v=1,self%nvars
             _SET_HORIZONTAL_DIAGNOSTIC_(self%id_local_pvar(:,i_v),locals(:,i_v))
